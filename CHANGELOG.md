@@ -15,6 +15,6 @@ SHA-256 `3093b7e677e285e4dd1f612d9f9ccc0df6e364998bc79f1ec52df0b9c11a7ffd`.
 - Speeds saved on the card (`VARISPD.BIN`) and following the sample on copy and exchange.
 - Version screen (hold MARK at power-on) shows `2.00`.
 - Roland's factory hardware-test mode removed to make room.
-- Web patcher (GitHub Pages, `docs/index.html`) and Python patcher (`patch.py`) with identical results.
+- [Web patcher](https://good-scoop-labs.github.io/sp-404sx-extrafirmware/) (GitHub Pages, `docs/index.html`) and Python patcher (`patch.py`) with identical results.
 
 Development history (internal test builds 1 to 13) is in [docs/DEV_NOTES.md](docs/DEV_NOTES.md).

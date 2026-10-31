@@ -38,7 +38,7 @@ This repository contains **no Roland code**. You make the firmware file from Rol
    [Roland's support page](https://www.roland.com/us/support/by_product/sp-404sx/updates_drivers/39ba2f11-6740-46d0-9286-0229f3c71bf7/)
    and unzip it to get `sp404sx_up.bin` (the SP-404A uses this same file).
 2. Turn it into the EXTRAfirmware file (either way gives the identical file):
-   - **In the browser (easiest):** open this project's web patcher (the GitHub Pages site, `docs/index.html`)
+   - **In the browser (easiest):** open the [web patcher](https://good-scoop-labs.github.io/sp-404sx-extrafirmware/)
      and drop the file onto it. Nothing is uploaded; it all runs in the page.
    - **With Python 3.8+** (no packages needed):
      ```

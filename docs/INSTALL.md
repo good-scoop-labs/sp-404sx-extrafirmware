@@ -11,7 +11,7 @@
 
 ## 1. Make the firmware file
 
-**Easiest: the web patcher.** Open the project's web patcher page, drop the official `sp404sx_up.bin`
+**Easiest: the web patcher.** Open the [web patcher](https://good-scoop-labs.github.io/sp-404sx-extrafirmware/), drop the official `sp404sx_up.bin`
 onto it and click **Download sp404sx_up.bin**. The page checks the file and the result exactly like the
 Python patcher, and nothing leaves your computer.
 

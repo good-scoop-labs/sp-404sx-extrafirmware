@@ -98,5 +98,7 @@ Never commit `sp404sx_up.bin` files (stock or built): they are Roland's code. `.
 
 ## GitHub Pages
 
+Live at <https://good-scoop-labs.github.io/sp-404sx-extrafirmware/>.
+
 Settings → Pages → Source: *Deploy from a branch*, branch `main`, folder `/docs`. The page links back to
 the repository automatically when served from `<user>.github.io/<repo>/`.
