@@ -1,7 +1,7 @@
 # Build environment for SP-404SX/A EXTRAfirmware (the SH cross compiler is Linux-only).
-#   docker build -t sp404sx-extrafirmware .
-#   docker run --rm -v "$PWD":/work sp404sx-extrafirmware python3 src/tools/build.py official/sp404sx_up.bin -o out/sp404sx_up.bin
-#   docker run --rm -v "$PWD":/work sp404sx-extrafirmware sh src/tests/run_tests.sh
+#   docker build -t sp-404sx-extrafirmware .
+#   docker run --rm -v "$PWD":/work sp-404sx-extrafirmware python3 src/tools/build.py official/sp404sx_up.bin -o out/sp404sx_up.bin
+#   docker run --rm -v "$PWD":/work sp-404sx-extrafirmware sh src/tests/run_tests.sh
 # Release v2.00 was built with Ubuntu 24.04's gcc-sh4-linux-gnu 13.3.0.
 FROM ubuntu:24.04
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
