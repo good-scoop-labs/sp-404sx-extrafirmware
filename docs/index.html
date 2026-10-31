@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SP-404SX/A EXTRAfirmware</title>
+<meta name="description" content="Make the SP-404SX/A EXTRAfirmware update file from Roland's official SP-404SX System Update 1.07, in your browser.">
+<style>
+  :root {
+    --bg: #f6f5f2; --card: #ffffff; --ink: #1d1d1b; --muted: #5d5b55; --line: #d9d6cf; --drop: #fbfaf7;
+    --accent: #c8102e; --accent-ink: #ffffff; --ok: #1f7a3f; --ok-bg: #e7f4ec; --err: #a3231b; --err-bg: #fbeaea;
+    --code: #efede8;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #151514; --card: #1f1f1d; --ink: #ecebe7; --muted: #a8a59d; --line: #3a3935; --drop: #252522;
+      --accent: #e5354f; --accent-ink: #ffffff; --ok: #6fd391; --ok-bg: #18301f; --err: #ff8a80; --err-bg: #3a1c1a;
+      --code: #2b2a27;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #151514; --card: #1f1f1d; --ink: #ecebe7; --muted: #a8a59d; --line: #3a3935; --drop: #252522;
+    --accent: #e5354f; --accent-ink: #ffffff; --ok: #6fd391; --ok-bg: #18301f; --err: #ff8a80; --err-bg: #3a1c1a;
+    --code: #2b2a27;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+    font: 16px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 720px; margin: 0 auto; padding: 32px 16px 48px; }
+  header h1 { margin: 0; font-size: 1.9rem; letter-spacing: -0.01em; }
+  header p { margin: 6px 0 0; color: var(--muted); }
+  .badge { display: inline-block; margin-top: 12px; padding: 3px 10px; border: 1px solid var(--line);
+    border-radius: 999px; font-size: .85rem; color: var(--muted); }
+  section { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 18px; margin-top: 18px; }
+  h2 { margin: 0 0 6px; font-size: 1.1rem; }
+  h2 .n { display: inline-flex; align-items: center; justify-content: center; width: 1.6em; height: 1.6em; margin-right: 8px;
+    border-radius: 50%; background: var(--accent); color: var(--accent-ink); font-size: .85rem; }
+  p { margin: 6px 0; }
+  ul, ol { margin: 6px 0; padding-left: 1.3em; }
+  li { margin: 3px 0; }
+  a { color: var(--accent); }
+  code { background: var(--code); padding: 1px 5px; border-radius: 4px; font-size: .92em; overflow-wrap: anywhere; }
+  .drop { display: block; position: relative; margin-top: 10px; border: 2px dashed var(--line); border-radius: 8px;
+    background: var(--drop); padding: 22px 14px; text-align: center; cursor: pointer;
+    transition: border-color .15s, background .15s; }
+  .drop.over, .drop:focus-within { border-color: var(--accent); }
+  .drop input { position: absolute; left: 0; top: 0; width: 1px; height: 1px; opacity: 0; overflow: hidden; }
+  .drop strong { display: block; }
+  .drop span { color: var(--muted); font-size: .9rem; }
+  #status { margin-top: 12px; padding: 10px 12px; border-radius: 8px; display: none; overflow-wrap: anywhere; }
+  #status.ok { display: block; background: var(--ok-bg); color: var(--ok); }
+  #status.err { display: block; background: var(--err-bg); color: var(--err); }
+  #status.busy { display: block; color: var(--muted); }
+  button { margin-top: 12px; width: 100%; padding: 12px 16px; border: 0; border-radius: 8px; font: inherit; font-weight: 600;
+    background: var(--accent); color: var(--accent-ink); cursor: pointer; }
+  button:disabled { background: var(--line); color: var(--muted); cursor: not-allowed; }
+  .muted { color: var(--muted); font-size: .9rem; }
+  footer { margin-top: 26px; color: var(--muted); font-size: .85rem; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>SP-404SX/A EXTRAfirmware</h1>
+    <p>Tape-style varispeed for every pad on the Roland SP-404SX and SP-404A (same firmware, works the same on both): pitch and tempo change together.</p>
+    <span class="badge" id="badge">Release &hellip;</span>
+  </header>
+
+  <section>
+    <h2><span class="n">1</span>Get Roland&rsquo;s official update</h2>
+    <p>Download <strong>SP-404SX System Update Version 1.07</strong> from
+      <a href="https://www.roland.com/us/support/by_product/sp-404sx/updates_drivers/39ba2f11-6740-46d0-9286-0229f3c71bf7/" rel="noopener">Roland&rsquo;s support page</a>
+      and unzip it. You need the file <code>sp404sx_up.bin</code> inside, unchanged. SP-404A owners use this same file.</p>
+    <p class="muted">This site contains no Roland code. It only adds this project&rsquo;s changes to your copy of Roland&rsquo;s file.</p>
+  </section>
+
+  <section>
+    <h2><span class="n">2</span>Make the EXTRAfirmware file</h2>
+    <label class="drop" id="drop">
+      <input type="file" id="file" accept=".bin">
+      <strong>Drop <code>sp404sx_up.bin</code> here</strong>
+      <span>or click to choose it. Nothing is uploaded; it all happens in this page.</span>
+    </label>
+    <div id="status" role="status" aria-live="polite"></div>
+    <button id="dl" disabled>Download sp404sx_up.bin</button>
+  </section>
+
+  <section>
+    <h2><span class="n">3</span>Install it</h2>
+    <ol>
+      <li>Back up your SD card. Use a card formatted by the SP-404SX/A with at least 2&nbsp;MB free.</li>
+      <li>Copy the downloaded <code>sp404sx_up.bin</code> to the root of the card (keep that exact name).</li>
+      <li>Power off the SP-404SX/A, insert the card, connect the <strong>AC adaptor</strong> (not batteries) and power on.</li>
+      <li>The display shows <code>UPd</code> and then <code>Fin</code> after about ten seconds. Never power off while it says <code>UPd</code>.</li>
+      <li>Power off, then delete <code>sp404sx_up.bin</code> from the card.</li>
+    </ol>
+    <p class="muted">To check the install, hold MARK while powering on: the display shows <code>2.00</code> (stock shows 1.07). To go back to stock, install Roland&rsquo;s original <code>sp404sx_up.bin</code> the same way.</p>
+  </section>
+
+  <section>
+    <h2>What it adds</h2>
+    <ul>
+      <li><strong>CTRL&nbsp;3 on the TIME/BPM page</strong> sets each pad&rsquo;s speed: fully left OFF, then &minus;12 to +7 semitones (centre = normal), fully right <strong>PTN</strong> to follow the pattern tempo (0.25&times; to 4&times;).</li>
+      <li>The display shows the BPM you hear. CTRL&nbsp;1 and CTRL&nbsp;2 also show their value &times; the pad&rsquo;s speed.</li>
+      <li>Works together with Time Modify. Moving CTRL&nbsp;2 resets varispeed, the same way it resets Time Modify.</li>
+      <li>Speeds are saved on the card (<code>VARISPD.BIN</code>) and follow the sample when you copy or exchange pads.</li>
+      <li>Roland&rsquo;s factory hardware-test mode is removed to make room. Nothing else changes.</li>
+    </ul>
+  </section>
+
+  <footer>
+    <p>Unofficial. Not affiliated with or endorsed by Roland. Use at your own risk; Roland&rsquo;s original update always restores the stock firmware.</p>
+    <p id="repo"></p>
+  </footer>
+</main>
+
+<script src="extrafirmware-patch.js"></script>
+<script src="patcher-core.js"></script>
+<script>
+(function () {
+  'use strict';
+  var data = window.EXTRAFIRMWARE_PATCH, core = window.ExtraPatcher;
+  var input = document.getElementById('file'), drop = document.getElementById('drop');
+  var status = document.getElementById('status'), dl = document.getElementById('dl');
+  var result = null;
+  document.getElementById('badge').textContent = 'v' + data.release + ' · for SP-404SX and SP-404A';
+
+  // link back to the repository when served from GitHub Pages (user.github.io/repo/)
+  var host = location.hostname, seg = location.pathname.split('/').filter(Boolean)[0];
+  if (/\.github\.io$/.test(host)) {
+    var url = 'https://github.com/' + host.split('.')[0] + (seg ? '/' + seg : '');
+    var a = document.createElement('a'); a.href = url; a.textContent = 'Source, full guide and issues on GitHub';
+    document.getElementById('repo').appendChild(a);
+  }
+
+  function show(cls, msg) { status.className = cls; status.textContent = msg; }
+
+  function handle(file) {
+    result = null; dl.disabled = true;
+    if (!file) return;
+    show('busy', 'Checking ' + file.name + '…');
+    var reader = new FileReader();
+    reader.onerror = function () { show('err', 'Could not read the file.'); };
+    reader.onload = function () {
+      core.apply(new Uint8Array(reader.result), data).then(function (r) {
+        if (!r.ok) { show('err', r.message); return; }
+        result = r.bytes; dl.disabled = false;
+        show('ok', 'Official 1.07 file recognised. ' + data.name + ' v' + data.release +
+          ' is ready (SHA-256 ' + r.sha256.slice(0, 16) + '…).');
+      });
+    };
+    reader.readAsArrayBuffer(file);
+  }
+
+  input.addEventListener('change', function () { handle(input.files[0]); });
+  ['dragenter', 'dragover'].forEach(function (ev) {
+    drop.addEventListener(ev, function (e) { e.preventDefault(); drop.classList.add('over'); });
+  });
+  ['dragleave', 'drop'].forEach(function (ev) {
+    drop.addEventListener(ev, function (e) { e.preventDefault(); drop.classList.remove('over'); });
+  });
+  drop.addEventListener('drop', function (e) { handle(e.dataTransfer.files[0]); });
+
+  dl.addEventListener('click', function () {
+    if (!result) return;
+    var blob = new Blob([result], { type: 'application/octet-stream' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = 'sp404sx_up.bin';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function () { URL.revokeObjectURL(a.href); }, 5000);
+  });
+})();
+</script>
+</body>
+</html>

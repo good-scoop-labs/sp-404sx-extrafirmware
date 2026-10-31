@@ -1,0 +1,15 @@
+# Roland firmware files (stock or built) must never be committed
+*.bin
+official/*
+!official/README.md
+out/
+
+# build products
+src/firmware/ratio.c
+src/firmware/*.o
+src/firmware/*.elf
+src/firmware/*.map
+__pycache__/
+*.pyc
+.DS_Store
+.idea/
