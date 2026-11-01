@@ -39,8 +39,8 @@ a file with exactly that name.
 3. Connect the AC adaptor and power on. The update starts by itself.
 4. The display shows `UPd` (the dot blinks), then `Fin` after about ten seconds.
    **Never power off while it shows `UPd`.**
-5. Power off, take out the card and delete `sp404sx_up.bin` from it (otherwise it updates again at
-   every power-on).
+5. Power off, take out the card and delete `sp404sx_up.bin` from it on your computer (otherwise it
+   updates again at every power-on), then put the card back in the SP-404SX/A.
 
 ## 3. Check it
 
