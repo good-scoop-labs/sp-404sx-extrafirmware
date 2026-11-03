@@ -5,6 +5,12 @@
      frames and resamples them (linear interpolation) in place into the F-frame block. Normal speed calls
      Roland's fill directly (bit-identical to stock).
    - Saving: speeds are kept in VARISPD.BIN on the card and follow the sample (copy / exchange / delete).
+   - Chromatic mode, per bank: SHIFT + TIME/BPM opens a chromatic menu (TIME/BPM blinks) for the last pad played
+     and makes it its bank's source: the bank's 12 pads play it at 0..+11 semitones + 12 x octave, MIDI notes on
+     the bank's own channel play it with note 60 = its own pitch (silent above B6). Menu: CTRL 1 OFF / MIDI channel
+     (free ones only), CTRL 2 MON (poly to come), CTRL 3 octave -2..+2. Any number of banks at once. Keys work on the play
+     page, the TIME/BPM page and while resampling (RDY / REC); elsewhere the pads play as stock. Saved in
+     CHROMA.BIN; a bank turns off when its source sample changes.
    Placement (see link.ld and src/tools/build.py): the free 1 KB above the vector table, Roland's hidden PAD_INFO
    debug dump, two unreferenced Roland routines, and methods of the disabled factory test pages.
    Every Roland function called from here is named by its address in the official 1.07 image. */
@@ -30,6 +36,7 @@ typedef unsigned int u32;
 #define P_MOD    44
 #define MODE_VARI 8
 #define MAXV     12   /* SP-404SX polyphony; a voice numbered above this just plays at normal speed */
+#define BTN_BPM  40   /* TIME/BPM button: chromatic gesture; the only button whose stock handling differs between modes 7 and 8 */
 #define UNITY    0x10000u
 
 struct page  { void *vt; int mode; int f8; int f12; };   /* f12 == 1: CTRL 2 shows the pattern tempo */
@@ -53,6 +60,35 @@ volatile int vari_need_load __attribute__((section(".cavedata"))) = 1;
 struct vstate { s16 aL, aR, bL, bR; u32 ph; int nxt; };   /* nxt = expected cursor + 1; 0 = not running (RAM starts zeroed) */
 struct vstate vari_vs[MAXV] SECT(".vbss");
 
+/* ------------------------------------------------------------------ chromatic mode (state) */
+#ifndef CHR
+#define CHR(n) __attribute__((noinline, section(".text.chr" #n)))   /* reclaimed factory test page methods (link.ld) */
+#endif
+/* Settings per bank A..J, saved verbatim as CHROMA.BIN: "CHR1", then per bank: source pad + 1 (0 = off), MIDI
+   channel 0..15, mode (bits 0..2 octave + 2, bit 3 poly) and a fingerprint of the source's sample. The source is
+   one of the bank's own pads; while it is set, the bank's 12 pads are keys: pad 1 = the source's own pitch,
+   + 1 semitone per pad, + 12 x octave. MIDI notes on the bank's channel play it too: note 60 = own pitch. */
+struct cbank { unsigned char src, ch, mode, fp; };
+struct ctab { u32 magic; struct cbank b[10]; };
+struct ctab chr_tab SECT(".chrdata");
+#define CHR_MAGIC 0x43485231u     /* "CHR1" */
+/* Running state (not saved): per bank the key pad + 1 / MIDI note + 1 that sounds (for releases) and the
+   pitch the source's voice plays (semitones + 64, 0 = its own pitch); the pitch of the start in progress; the
+   menu (bank, source pad, last knob, open request); C.ON redraw request; unsaved-change timer; display text. */
+struct chr { unsigned char key[10], mkey[10], cur[10], pend, mb, mpad, mk, want, show, menu; volatile int dirty; char txt[4]; };
+struct chr chr_st SECT(".chrdata");
+#define S0       64               /* semitone offset in pend / cur */
+#define S_MAX    35               /* highest semitone (just under 8x) */
+#define MODE_CHR 9                /* TIME/BPM page: chromatic menu */
+#define BTN_SHIFT 20
+/* 2^(k/12) - 1 in Q16 for k = 0..11 */
+static const u16 chr_semi[12] SECT(".rodata.chr") = { 0, 3897, 8026, 12400, 17034, 21944, 27146, 32657, 38496, 44682, 51236, 58179 };
+static const char chr_on_s[] SECT(".rodata.chr") = "C.ON";
+static const char chr_mon_s[] SECT(".rodata.chr") = "MON";
+static int chr_menu(struct page *p);
+static int chr_padkey(struct event *e);
+static unsigned char pad_fp(int pad);
+
 /* ------------------------------------------------------------------ speed + UI */
 #ifndef R_TEMPO
 #define R_TEMPO  ((int  (*)(void))0x0C0BAF24)   /* pattern tempo x100 (102.00 BPM = 10200); what stock PTN uses */
@@ -70,7 +106,8 @@ struct vstate vari_vs[MAXV] SECT(".vbss");
 #define STR_OFF  ((const char *)0x0C12F3EC)    /* Roland's "OFF" */
 #define STR_PTN  ((const char *)0x0C12F3F0)    /* Roland's "PTN" */
 #define R_MIN    0x4000u            /* PTN range: 0.25x (-24 semitones) */
-#define R_MAX    0x3FFFFu           /* .. just under 4x (+24 st); the resampler supports any ratio < 4 */
+#define R_MAX    0x3FFFFu           /* .. just under 4x (+24 st) */
+#define V_MAX    0x7FFFFu           /* the resampler supports any ratio < 8 (chromatic notes up to +35 st) */
 
 
 static int cur_pad(void) {
@@ -111,7 +148,7 @@ DEV __attribute__((noinline)) u32 pad_ratio(int pad) {
 DEV __attribute__((noinline)) static void show_bpm(int x10, u32 r) {
     R_SHOWN(R_DIV((int)(((u32)x10 * r) >> 16) + 5, 10));
 }
-CAVE static void vari_show(void) {
+__attribute__((noinline, section(".text.vshow"))) static void vari_show(void) {
     int pad = cur_pad();
     const char *txt = STR_DASH;
     if (pad >= 0) {
@@ -127,6 +164,7 @@ CAVE static void vari_show(void) {
 CAVE int vari_display(struct page *p) {
     int m = p->mode, pad, v;
     u32 r;
+    if (chr_menu(p)) return 1;
     if (m == MODE_VARI) { vari_show(); return 1; }
     if (m != 6 && m != 7) return 0;
     pad = cur_pad();
@@ -146,7 +184,6 @@ CAVE int vari_display(struct page *p) {
 #ifndef KNOBPOS
 #define KNOBPOS  ((volatile const s16 *)0x0CDAA428)   /* Roland's current knob positions (0..127), by knob id */
 #endif
-#define BTN_BPM  40                    /* the only button whose stock handling differs between modes 7 and 8 */
 s16 vari_snap[2] SECT(".vbss");        /* CTRL 1 / CTRL 2 positions when CTRL 3 was last turned */
 
 /* CTRL 3 turned: store the speed, remember where CTRL 1 / CTRL 2 are, show the CTRL 3 view. */
@@ -186,6 +223,311 @@ MIDI int vari_event(struct page *p, struct event *e) {
     }
     if (m == MODE_VARI && e->type == 0 && e->id == BTN_BPM) p->mode = 7;
     return 0;
+}
+
+/* ------------------------------------------------------------------ chromatic mode */
+#ifndef R_PLAYPAD
+#define R_PLAYREQ ((int  (*)(void *q, int kind, int pad, int vel))0x0C093D28) /* play request: drops pads with no
+                                                                         sample loaded, then starts the pad      */
+#define R_PLAYPAD ((int  (*)(int kind, int pad, int vel))0x0C084974)  /* start a pad (stops its old voice first) */
+#define R_PLAYING ((int  (*)(int pad))0x0C0842CC)                     /* 1 while the pad is playing              */
+#define R_STOPPAD ((void (*)(int pad, int how))0x0C084400)            /* stop the pad's voices                   */
+#define R_VFREE   ((void (*)(int n))0x0C0845AC)                       /* voice list upkeep after a stop (with    */
+#define R_VFREE2  ((void (*)(void))0x0C0845B8)                        /* R_VFREE2), as play_pad does             */
+#define R_RELPAD  ((void (*)(int pad))0x0C084B48)                     /* pad released (gate: stop it)            */
+#define R_HELD    ((int  (*)(int id))0x0C0BEA7C)                      /* 1 while panel button `id` is held       */
+#define R_MSG     ((void (*)(const char *s))0x0C0D0150)               /* play page text, as Roland's P.ON / P.OF  */
+#define CURPAGE   (*(void *const volatile *)0x0CDAF934)               /* page manager: page shown now             */
+#define FWDMODE   (*(volatile const int *)0x0C138F5C)                 /* Roland: SHIFT + TIME/BPM = FWD while set */
+#define REQOBJ    ((void *)0x0CCAE0C4)                                /* the note handler's play request object   */
+#define R_SMPKICK ((int  (*)(void))0x0C08FDDC)                        /* sampler armed (resample RDY): start it   */
+#define R_SETPAGE ((void (*)(void *mgr, int slot))0x0C0BE884)         /* show page `slot` (1 = play page)         */
+#endif
+#define VT_PLAY  0x0C12E044u   /* CPagePlay vtable     */
+#define VT_EDIT  0x0C12F3F8u   /* CPageSmplEdit (TIME/BPM page) vtable */
+#define VT_RESMP 0x0C12F270u   /* CPageReSmpling vtable; page +8 = state: 1..2 choosing the destination pad
+                                  (pads select it), 3 / 4 RDY / 5 REC (pads ignored by the page) */
+#define P_BANK   53            /* current bank 0..9: panel pad n of the bank is pad bank * 12 + n */
+#define P_MIDICH 2             /* the SP-404SX's MIDI channel (< 0: off); pads 60..119 use the next channel */
+#define K_MIDI   3             /* note event sources that are someone playing: MIDI in, panel pads */
+#define K_PANEL  6
+
+/* The page shown now: 1 = play page or TIME/BPM page, 2 = resampling with the destination chosen (RDY / REC),
+   3 = resampling while choosing the destination, 0 = anything else (pattern mode and pattern recording have
+   their own pages, so they are 0). Chromatic keys play on 1 and 2. */
+CHR(page) static int chr_page(void) {
+    const u32 *pg = CURPAGE;
+    u32 vt;
+    if (!pg) return 0;
+    vt = pg[0];
+    if (vt == VT_PLAY || vt == VT_EDIT) return 1;
+    if (vt == VT_RESMP) return (int)pg[2] >= 3 ? 2 : 3;
+    return 0;
+}
+#define chr_ok() ((unsigned)(chr_page() - 1) < 2u)
+
+/* Bank of a pad 0..119 (no division: not on the allow-list). */
+CHR(bankof) static int chr_bankof(int pad) {
+    int b = 0;
+    while (pad >= 12) { pad -= 12; b++; }
+    return b;
+}
+/* Bank whose chromatic keys include this pad, while keys are usable, else -1. */
+CHR(keyof) static int chr_keyof(int pad) {
+    int b;
+    if (pad < 0 || pad >= 120 || !chr_ok()) return -1;
+    b = chr_bankof(pad);
+    return chr_tab.b[b].src ? b : -1;
+}
+/* Bank this pad is the chromatic source of, else -1. */
+CHR(srcbank) static int chr_srcbank(int pad) {
+    int b;
+    if (pad < 0 || pad >= 120) return -1;
+    b = chr_bankof(pad);
+    return chr_tab.b[b].src == pad + 1 ? b : -1;
+}
+/* Channels taken: the SP-404SX's own two and the other chromatic banks'. */
+CHR(used) static int chr_used(int ch, int self) {
+    int b, own = R_GET(P_MIDICH, -1);
+    if (own >= 0 && (ch == own || ch == own + 1)) return 1;
+    for (b = 0; b < 10; b++)
+        if (b != self && chr_tab.b[b].src && chr_tab.b[b].ch == ch) return 1;
+    return 0;
+}
+/* The n-th free channel (n >= 0, -1 if none), or for n < 0 the number of free channels. */
+CHR(free) static int chr_free(int self, int n) {
+    int ch, k = 0;
+    for (ch = 0; ch < 16; ch++)
+        if (!chr_used(ch, self)) { if (k == n) return ch; k++; }
+    return n < 0 ? k : -1;
+}
+
+/* ---- the chromatic menu: mode 9 of the TIME/BPM page. SHIFT + TIME/BPM opens it for the current pad (the last
+   pad played) and turns that pad's bank chromatic with it as the source (lowest free MIDI channel, mono, octave
+   0) unless it already is. CTRL 1: OFF / free MIDI channels, CTRL 2: MON (poly to come), CTRL 3: octave -2..+2.
+   The TIME/BPM button blinks (LED patch) and leaves the menu (Roland leaves the page in modes other than 5..7). */
+CHR(open) static void chr_open(struct page *p) {
+    int pad = R_GET(P_CURPAD, -1), b, ch;
+    chr_st.want = 0;
+    if (pad < 0 || pad >= 120) return;
+    b = chr_bankof(pad);
+    if (chr_tab.b[b].src != pad + 1) {
+        ch = chr_free(b, 0);
+        if (ch < 0) return;
+        chr_tab.b[b].src = (unsigned char)(pad + 1);
+        chr_tab.b[b].ch = (unsigned char)ch;
+        chr_tab.b[b].mode = 2;                  /* octave 0, mono */
+        chr_tab.b[b].fp = pad_fp(pad);
+        chr_st.cur[b] = 0;
+        chr_st.dirty = 1;
+    }
+    chr_st.mb = (unsigned char)b;
+    chr_st.mpad = (unsigned char)pad;
+    chr_st.mk = 0;
+    chr_st.menu = 1;
+    p->mode = MODE_CHR;
+}
+CHR(knob) static void chr_knob(int id, int v) {
+    struct cbank *c = &chr_tab.b[chr_st.mb];
+    u32 old = *(u32 *)c;
+    if (v < 0) v = 0;
+    if (id == 0) {                                  /* OFF fully left, then the free channels */
+        int i = (v * (chr_free(chr_st.mb, -1) + 1)) >> 7;
+        if (!i) c->src = 0;
+        else {
+            c->ch = (unsigned char)chr_free(chr_st.mb, i - 1);
+            c->src = (unsigned char)(chr_st.mpad + 1);
+            c->fp = pad_fp(chr_st.mpad);
+        }
+    } else if (id == 1) c->mode &= 7;                 /* mono only for now (poly: later); bit 3 stays clear */
+    else c->mode = (unsigned char)((c->mode & 8) | ((v * 5) >> 7));                   /* 5 zones: -2..+2 */
+    chr_st.mk = (unsigned char)id;
+    if (*(u32 *)c != old) chr_st.dirty = 1;
+}
+CHR(show) static void chr_show(void) {
+    const struct cbank *c = &chr_tab.b[chr_st.mb];
+    char *t = chr_st.txt;
+    const char *s = t;
+    int n;
+    if (chr_st.mk == 1) s = chr_mon_s;
+    else if (chr_st.mk == 2) {                      /* o-2 .. o 2 */
+        n = (c->mode & 7) - 2;
+        t[0] = 'o'; t[1] = n < 0 ? '-' : ' '; t[2] = (char)('0' + (n < 0 ? -n : n));
+    } else if (!c->src) s = STR_OFF;
+    else {                                          /* C 1 .. C16 */
+        n = c->ch + 1;
+        t[0] = 'C'; t[1] = n >= 10 ? '1' : ' '; t[2] = (char)('0' + (n >= 10 ? n - 10 : n));
+    }
+    t[3] = 0;
+    R_SHOWS(s, 1);
+}
+/* Display hook of the TIME/BPM page: open the menu if SHIFT + TIME/BPM asked for it, then draw it. A mode 9 left
+   over from an earlier visit (menu closed) falls back to the CTRL 1 view. */
+CHR(menu) static int chr_menu(struct page *p) {
+    if (chr_st.want) chr_open(p);
+    if (p->mode != MODE_CHR) return 0;
+    if (!chr_st.menu) { p->mode = 7; return 0; }
+    chr_show();
+    return 1;
+}
+/* Events in the menu: knobs set the bank; TIME/BPM, with or without SHIFT, leaves for the main screen (Roland
+   takes SHIFT + TIME/BPM for itself, so the menu does it). Pads: while the bank is chromatic they only play (the
+   page stays); with CTRL 1 at OFF they go to Roland, which leaves the page for another pad, as on the TIME/BPM
+   page itself. */
+CHR(menuev) static int chr_menu_ev(struct event *e) {
+    if (e->type == 1 && e->id <= 2) { chr_knob(e->id, e->val); chr_show(); return 1; }
+    if (e->type != 0) return 0;
+    if (e->id >= 1 && e->id <= 12) return chr_tab.b[chr_st.mb].src != 0;
+    if (e->id == BTN_BPM && e->val) { chr_st.menu = 0; R_SETPAGE(0, 1); return 1; }
+    return 0;
+}
+/* TIME/BPM page outside the menu (TIME/BPM and START/END/LEVEL views): a pad of a chromatic bank is a key, so
+   pressing it keeps the page (Roland would leave it for another pad). */
+CHR(padkey) static int chr_padkey(struct event *e) {
+    int id = e->id;
+    return e->type == 0 && e->val && id >= 1 && id <= 12 && chr_keyof(R_GET(P_BANK, -1) * 12 + id - 1) >= 0;
+}
+/* HOLD (replaces the pointer to R_GET in Roland's hold check 0x0C0F1D50, which asks whether the pressed pad has
+   GATE on): a key of a chromatic bank answers with its source's setting, so HOLD latches every key. */
+typedef int (*getfn)(int id, int pad);
+CHR(padkey) int chr_holdget(int id, int pad, getfn orig) {
+    int b = chr_keyof(pad);
+    if (b >= 0) pad = chr_tab.b[b].src - 1;
+    return orig(id, pad);
+}
+/* Play page event hook: SHIFT + TIME/BPM asks the TIME/BPM page that Roland is about to open for the menu. */
+typedef int (*evfn)(void *page, struct event *e);
+CHR(pageevent) int chr_page_event(void *page, struct event *e, evfn orig) {
+    if (e->type == 0 && e->val) chr_st.want = e->id == BTN_BPM && R_HELD(BTN_SHIFT) && !FWDMODE;
+    return orig(page, e);
+}
+/* Play page enter and refresh hooks (UI task): C.ON when the bank shown is chromatic, drawn on the first refresh
+   after entering the page and after each chromatic note; Roland's own texts still appear in between. */
+typedef int (*pgfn)(void *page);
+CHR(pageenter) int chr_page_enter(void *page, pgfn orig) {
+    int r = orig(page);
+    chr_st.show = 1;
+    chr_st.menu = 0;
+    return r;
+}
+CHR(pagerefres) int chr_page_refresh(void *page, pgfn orig) {
+    int r = orig(page), b;
+    if (chr_st.show) {
+        b = R_GET(P_BANK, -1);
+        if (b >= 0 && b < 10 && chr_tab.b[b].src) R_MSG(chr_on_s);
+    }
+    chr_st.show = 0;
+    return r;
+}
+
+/* ---- playing. A key press (panel, or MIDI on the SP-404SX's own channels) requests the bank's source instead,
+   before Roland's check that the pressed pad has a sample, so empty keys work. */
+/* Key pad `pad` of chromatic bank b pressed: remember it, set the pitch to start, return the source pad. */
+CHR(keydown) static int chr_keydown(int b, int pad) {
+    chr_st.key[b] = (unsigned char)(pad + 1);
+    chr_st.mkey[b] = 0;
+    chr_st.pend = (unsigned char)(pad - 12 * b + 12 * ((chr_tab.b[b].mode & 7) - 2) + S0);
+    chr_st.show = 1;
+    return chr_tab.b[b].src - 1;
+}
+CHR(request) int chr_request(void *q, int kind, int pad, int vel) {
+    int b = -1, r;
+    if (kind == K_PANEL || kind == K_MIDI) b = chr_keyof(pad);
+    if (b >= 0) pad = chr_keydown(b, pad);
+    r = R_PLAYREQ(q, kind, pad, vel);
+    chr_st.pend = 0;
+    return r;
+}
+/* MIDI note handler hook: notes on a chromatic bank's channel play its source, note 60 = own pitch, silent above
+   B6; note off releases it if that note is the one sounding. Everything else goes to Roland. Like Roland's handler,
+   every event first lets an armed sampler start (a note starts the resample at RDY). */
+typedef int (*notefn)(unsigned char *ev);
+CHR(note) int chr_note(unsigned char *ev, notefn orig) {
+    int b, note = ev[0], vel = ev[3], src;
+    if (ev[1] != K_MIDI || note > 127) return orig(ev);
+    for (b = 0; b < 10; b++)
+        if (chr_tab.b[b].src && chr_tab.b[b].ch == ev[2]) break;
+    if (b == 10) return orig(ev);
+    R_SMPKICK();
+    src = chr_tab.b[b].src - 1;
+    if (vel == 0 || vel == 255) {
+        if (chr_st.mkey[b] == note + 1) { chr_st.mkey[b] = 0; R_RELPAD(src); }
+        return 0;
+    }
+    if (note - 60 > S_MAX) return 0;
+    chr_st.mkey[b] = (unsigned char)(note + 1);
+    chr_st.key[b] = 0;
+    chr_st.pend = (unsigned char)(note - 60 + S0);
+    chr_st.show = 1;
+    R_PLAYREQ(REQOBJ, K_MIDI, src, vel);
+    chr_st.pend = 0;
+    return 0;
+}
+/* MIDI note gates. Roland drops every MIDI note while sampling / resampling, both where they arrive (the MIDI
+   receiver's pointer to 0x0C08FD70, with the event) and again in the note handlers (their pointer to it, MIDI
+   events only). While resampling with the destination chosen (RDY / REC) MIDI notes get through like pad presses:
+   they play, and the first one starts the recording. Everywhere else Roland's answer stands. */
+typedef int (*gatefn)(void);
+CHR(gate) int chr_gate(const unsigned char *ev, gatefn orig) {
+    if (ev[1] == K_MIDI && chr_page() == 2) return 1;
+    return orig();
+}
+CHR(gate) int chr_gate2(gatefn orig) {
+    return chr_page() == 2 ? 1 : orig();
+}
+/* Every pad start (replaces the pointer to Roland's 0x0C084974). The voice's first audio blocks are made inside
+   Roland's start, so the source's pitch is set before it: the pending note, or its own pitch for any other start
+   (pattern playback, other pages); Roland restarting it (MARK) keeps the current note.
+   Roland stops a playing pad when it is pressed again, and for a loop pad (gate off) that press only stops it;
+   another note must play, so the source is stopped here first with Roland's own stop sequence. */
+CHR(stop) static void chr_stop(int pad) {
+    R_STOPPAD(pad, 0);
+    R_VFREE(7);
+    R_VFREE2();
+}
+CHR(play) int chr_play(int kind, int pad, int vel) {
+    int b = chr_srcbank(pad);
+    if (b >= 0) {
+        if (chr_st.pend) {
+            if (chr_st.pend != chr_st.cur[b] && R_PLAYING(pad)) chr_stop(pad);
+            chr_st.cur[b] = chr_st.pend;
+        } else if (kind != K_PANEL || !chr_ok()) chr_st.cur[b] = 0;   /* pattern, other pages: its own pitch */
+        /* else a panel-kind start with no key on a chromatic page: Roland restarting the source itself (e.g. MARK
+           replays it from the new mark), so it keeps the note it is playing */
+    }
+    return R_PLAYPAD(kind, pad, vel);
+}
+/* Every pad release (replaces the pointer to Roland's 0x0C084B48). Releasing the key that sounds releases the
+   source (Roland's gate handling); releasing any other key of a chromatic bank does nothing. */
+CHR(release) void chr_release(int pad) {
+    int b = chr_keyof(pad);
+    if (b >= 0) {
+        if (chr_st.key[b] != pad + 1) return;
+        pad = chr_tab.b[b].src - 1;
+    }
+    R_RELPAD(pad);
+}
+/* Audio: speed of a source's voice = the pad's speed x 2^(semitones/12) (octaves as exact shifts), at most just
+   under 8x; exactly r for its own pitch and every other pad. Any stored byte gives a safe speed. */
+CHR(ratio) static u32 chr_ratio(int pad, u32 r) {
+    int b = chr_srcbank(pad), k, o = 0;
+    if (b < 0) return r;
+    k = chr_st.cur[b];
+    if (!k || k > S0 + S_MAX) return r;
+    k -= S0;                                                    /* semitones: -64..+35 */
+    while (k < 0) { k += 12; o--; }
+    while (k >= 12) { k -= 12; o++; }
+    if (k) r = ((r >> 2) * ((chr_semi[k] + UNITY) >> 1)) >> 13; /* r < 2^18, factor < 2^17 */
+    r = o < 0 ? r >> -o : r << o;
+    return r > V_MAX ? V_MAX : r;
+}
+
+/* TIME/BPM page event hook (ev_stub): the chromatic menu, SHIFT + TIME/BPM, keys; everything else to vari_event. */
+CAVE int vari_ev(struct page *p, struct event *e) {
+    if (p->mode == MODE_CHR) return chr_menu_ev(e);
+    if (e->type == 0 && e->id == BTN_BPM && e->val && R_HELD(BTN_SHIFT) && !FWDMODE) { chr_open(p); return 1; }
+    if (chr_padkey(e)) return 1;
+    return vari_event(p, e);
 }
 
 /* ------------------------------------------------------------------ audio */
@@ -246,7 +588,7 @@ int vari_fill(void *obj, s16 *L, s16 *R, int *flag, int *frames, fillfn orig) {
     if (vi < 0 || vi >= MAXV || pad < 0 || pad >= 120 || F <= 0)
         return orig(obj, L, R, flag, frames);
     struct vstate *s = &vari_vs[vi];
-    u32 r = pad_ratio(pad);
+    u32 r = chr_ratio(pad, pad_ratio(pad));
     if (r == UNITY) {                                    /* normal speed: exactly stock */
         s->nxt = 0;
         return orig(obj, L, R, flag, frames);
@@ -256,7 +598,7 @@ int vari_fill(void *obj, s16 *L, s16 *R, int *flag, int *frames, fillfn orig) {
         s->ph = 2 * UNITY;                               /* consume 2 frames before the first output */
     }
     int o = 0, ended = 0, bad = -1;
-    s16 tL[4], tR[4];
+    s16 tL[8], tR[8];
     while (o < F) {
         int left = F - o, m = 0, n = 0, place = 0;
         if (r < UNITY) {                                 /* slower: source at the tail, one pass */
@@ -275,7 +617,7 @@ int vari_fill(void *obj, s16 *L, s16 *R, int *flag, int *frames, fillfn orig) {
         int real, b = -1;
         if (m <= 0) {                                    /* last few outputs: one at a time via tL/tR */
             n = (int)(s->ph >> 16);
-            if (n > 4) n = 4;
+            if (n > 8) n = 8;                            /* ph < UNITY + r before an output: <= 8 for r < 8x */
             fetch(obj, tL, tR, n, flag, orig, &ended, &real);
             run(s, L + o, R + o, tL, tR, 1, r, real, &b);
             m = 1;
@@ -372,6 +714,80 @@ PERSIST int vari_tick(int ret, int ms) {
             vari_save();
             vari_dirty_ms = 0;
         }
+    }
+    return ret;
+}
+
+/* Roland's pad copy (exch = 0) and exchange (1) workers (xcopy_stub / xexch_stub), run by its file task with the
+   pads in params 60 (source) and 61 (destination); 0 = done. The speed moves with the sample explicitly: the
+   fingerprints can't tell identical samples apart (a copy exchanged with its source, a copy over another copy).
+   The speeds are read before the job, as resync may run on the half-done PAD_INFO meanwhile. */
+CHR(xset) static void vari_xset(int pad, int pos) {
+    vari_tab.e[pad].pos = (s8)pos;
+    vari_tab.e[pad].fp = pad_fp(pad);
+    vari_dirty_ms = 1;
+}
+CHR(xop) int vari_xop(int (*fn)(void), int exch) {
+    int p[2], i, r;
+    s8 s[2];
+    for (i = 0; i < 2; i++) {
+        p[i] = R_GET(60 + i, -1);
+        if ((unsigned)p[i] >= 120) return fn();
+        s[i] = vari_tab.e[p[i]].pos;
+    }
+    r = fn();
+    if (!(r & 0xFF))
+        for (i = !exch; i < 2; i++) vari_xset(p[i], s[i ^ 1]);
+    return r;
+}
+
+/* ------------------------------------------------------------------ chromatic mode: saving */
+static const char chr_path[] SECT(".rodata.chr") = "/ROLAND/SP-404SX/SMPL/CHROMA.BIN";
+
+/* Turn off every bank whose entry doesn't fit (source not in its bank, bad channel / octave) or whose source
+   sample changed (deleted, replaced, recorded over). Returns 1 if any was. */
+CHR(check) static int chr_check(void) {
+    int b, any = 0;
+    for (b = 0; b < 10; b++) {
+        struct cbank *c = &chr_tab.b[b];
+        if (c->src && (c->src > 120 || chr_bankof(c->src - 1) != b || c->ch > 15 || (c->mode & 7) > 4 || c->mode > 15 ||
+                       pad_fp(c->src - 1) != c->fp)) { c->src = 0; any = 1; }
+    }
+    return any;
+}
+/* Read CHROMA.BIN after PAD_INFO was (re)loaded; a missing or invalid file starts with every bank off. */
+CHR(load) static void chr_load(void) {
+    struct ctab *t = &chr_tab;
+    int n = 0, fd, b;
+    R_LOCK(14);
+    fd = R_OPEN(chr_path, 1);
+    if (fd >= 0) { n = R_READ(fd, t, sizeof *t); R_CLOSE(fd); }
+    R_UNLOCK(14);
+    if (n != (int)sizeof *t || t->magic != CHR_MAGIC) {
+        u32 *w = (u32 *)t;
+        for (b = 0; b < (int)(sizeof *t / 4); b++) w[b] = 0;
+        t->magic = CHR_MAGIC;
+    }
+    chr_check();
+    for (b = 0; b < 10; b++) chr_st.cur[b] = 0;
+    chr_st.dirty = 0;
+}
+CHR(save) static void chr_save(void) {
+    R_LOCK(14);
+    int fd = R_CREATE(chr_path);
+    if (fd >= 0) { R_WRITE(fd, &chr_tab, sizeof chr_tab); R_CLOSE(fd); }
+    R_UNLOCK(14);
+}
+/* Every 100 ms (tick_stub): Roland's auto-save and VARISPD.BIN first, then CHROMA.BIN the same way: loaded with it,
+   a bank whose source sample changed (deleted, replaced, recorded over) turns off, written 1 s after a change. */
+CHR(tick) int chr_tick(int ret, int ms) {
+    int load = vari_need_load;
+    ret = vari_tick(ret, ms);
+    if (load) { chr_load(); return ret; }
+    if (chr_check()) chr_st.dirty = 1;
+    if (chr_st.dirty > 0) {
+        chr_st.dirty += ms;
+        if (chr_st.dirty > 1000 && R_CARDOK()) { chr_save(); chr_st.dirty = 0; }
     }
     return ret;
 }

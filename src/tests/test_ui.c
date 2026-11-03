@@ -39,7 +39,9 @@ static void lk(int n){} static int cr(const char*p){return -1;} static int op(co
 #define R_WRITE wr
 #define R_CLOSE cl
 #define R_CARDOK cardok
+#include "mock_chr.h"
 #include "vari.c"
+static unsigned mock_ratio_now(int pad) { return chr_ratio(pad, pad_ratio(pad)); }
 #include "ratio.c"
 static int stock_mod_reset=1;
 static int evo(struct page *p, struct event *e){   /* stock CTRL2: 0 = halve, 127 = double, then mod = new orig */

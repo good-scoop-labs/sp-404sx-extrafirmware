@@ -2,13 +2,16 @@
 
 **SP-404SX/A EXTRAfirmware** is custom system firmware for the **Roland SP-404SX and SP-404A**. The two are
 the same instrument in a different case and run the same firmware, so it works on both in exactly the same
-way. It adds tape-style **varispeed** to every pad: pitch and tempo change together, like
-speeding up or slowing down a tape or a turntable.
+way. It adds tape-style **varispeed** to every pad (pitch and tempo change together, like speeding up or
+slowing down a tape or a turntable) and a **chromatic mode** that turns a bank into a keyboard for one of its
+samples, playable from the pads and over MIDI.
 
-> **Current release: v2.00** (the version screen shows `2.00`), based on Roland's system 1.07.
-> Output file: `sp404sx_up.bin`, SHA-256 `3093b7e677e285e4dd1f612d9f9ccc0df6e364998bc79f1ec52df0b9c11a7ffd`.
+> **Current release: v2.10** (the version screen shows `2.10`), based on Roland's system 1.07.
+> Output file: `sp404sx_up.bin`, SHA-256 `733885e5935d0c2c4c887f0446afa8e2546d2520223cec7ccbe9297c08066b54`.
 
 ## What it adds
+
+### Varispeed
 
 On the **TIME/BPM** page, the previously unused **CTRL 3** knob sets each pad's speed:
 
@@ -27,6 +30,25 @@ On the **TIME/BPM** page, the previously unused **CTRL 3** knob sets each pad's 
 - Speeds are **saved on the card** (`/ROLAND/SP-404SX/SMPL/VARISPD.BIN`) and **follow the sample**: copy and
   exchange take the speed along; delete, a new recording or an import on a pad resets it to normal.
 - Pads at normal speed or OFF play bit-for-bit as with the stock firmware.
+
+### Chromatic mode
+
+Play a pad, then press **SHIFT + TIME/BPM**: that pad's bank becomes a keyboard for it. Pad 1 plays the
+sample at its own pitch, each next pad one semitone higher. A menu opens (TIME/BPM blinks):
+
+| Control | Sets |
+|---|---|
+| CTRL 1 | MIDI channel for the bank (only free channels), or OFF to turn chromatic mode off |
+| CTRL 2 | `MON`: one note at a time (poly is planned) |
+| CTRL 3 | Octave of the pads, −2 to +2 |
+
+- Several banks can be chromatic at once, each with its own sample and MIDI channel.
+- **MIDI:** on the bank's channel, middle C (note 60) plays the sample at its own pitch; every note is a
+  semitone, up to B6.
+- Works on the main screen, the TIME/BPM page and while **resampling**: play a melody into a new sample.
+  While resampling, any MIDI note plays and the first one starts the recording.
+- HOLD works on every key, MARK keeps the note's pitch, and varispeed still applies on top.
+- Settings are saved on the card (`/ROLAND/SP-404SX/SMPL/CHROMA.BIN`).
 
 Full details: [docs/USER_GUIDE.md](docs/USER_GUIDE.md).
 

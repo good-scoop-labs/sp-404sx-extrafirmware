@@ -273,3 +273,279 @@ Sync Type, Original BPM, Modify BPM. No spare byte → varispeed needs its own s
   0x0C0F1142 -> `add #41` (7 -> '0'), hundreds digit `add #48` at 0x0C0F116C -> `add #49` (1 -> '2'): "2.00".
   Same mechanism as test build 1 (0x0C0F116C +'0' -> +'D', shown as E.01 on hardware). Two bytes vs build 13.
 - Output SHA-256 3093b7e677e285e4dd1f612d9f9ccc0df6e364998bc79f1ec52df0b9c11a7ffd, MD5 9e9afbcef474e57e49d2f3d53eea403c.
+
+## Chromatic mode (test build C1, after v2.00)
+Design: the 12 pads of the current bank play one source pad at 0..+11 semitones (pad 1 = own pitch), on top of
+its varispeed. Live mode only (nothing on the card, patterns untouched); "spread to bank" left for later.
+
+Note path, mapped:
+- Every note is a 4-byte MIDI-style event {+0 note, +1 source kind, +2 channel (bank half), +3 velocity},
+  queued (push 0x0C09290C, pop 0x0C092934) and handled by 0x0C089330 (from the loop 0x0C08F708). pad <-> note:
+  0x0C0F15F0 / 0x0C0F1610 (pads 0..59 = ch 0 notes 47..106, pads 60..119 = ch 1 notes 47..106). Panel pad
+  buttons arrive as raw 0xA0 events and are converted with the current bank (param 53): pad = bank*12 + n.
+- Kinds: 6 = panel pads (play_pad selects the current pad for kind 6), 3 = MIDI in (channel minus param 2,
+  the MIDI channel). Note 45 with kind 6 = SUB PAD (replays the last pad, 0x0C131BA0).
+- 0x0C0892AC(kind, pad, vel): vel 0 -> release 0x0C093DE4(req, pad) -> 0x0C084B48(pad) (stops it if the pad's
+  gate is on); else play request 0x0C093D28 -> **play_pad 0x0C084974(kind, pad, vel)**: stops the pad's running
+  voice (0x0C0842CC / 0x0C084400) => one voice per pad; allocates voice(s) (0x0C084874, list *0x0CCB7ABC) and
+  starts them via 0x0C093FB8(voice, pad, x). Voice objects 0x0CCAE0C8 + 24*i (i < 12): +0 feeder, +8 player,
+  +22 s8 pad (-1 = none), +23 index (= feeder +24 = the voice index vari_fill already uses).
+- The only pointers: play_pad at literal 0x0C093F44 (loaded only at 0x0C093DC8), 0x0C084B48 at literal
+  0x0C093F38 (loaded only at 0x0C093DF2). Both swapped to stubs (play_stub, rel_stub).
+
+UI, mapped:
+- Pages: page manager 0x0CDAF934, +0 = page shown now (object, +0 = vtable). CPagePlay vtable 0x0C12E044
+  (event 0x0C0C5384 -> buttons 0x0C0C4C68), CPageSmplEdit 0x0C12F3F8, CPagePtnRec (pattern recording) 0x0C12EF24.
+  Event {+0 type (0 button, 1 knob), +4 id, +5 value}; buttons: value != 0 = press. Button ids 1..12 = pads of
+  the current bank, 40 = TIME/BPM.
+- 0x0C0BEA7C(id) = 1 while button id is held (Roland uses it for its own combinations, e.g. ids 20, 34, 44).
+- Play page messages are drawn straight from the button handler (0x0C0D0150(str), as P.ON/P.OF at
+  0x0C12E034); the play page refresh does not redraw the display. The TIME/BPM page redraws on every refresh.
+
+Implementation (vari.c "chromatic mode"):
+- Gesture: TIME/BPM held + pad press (on the play page through a new CPagePlay event hook, slot 0x0C12E060 ->
+  pev_stub; on the TIME/BPM page in vari_event). Same pad as the source = off, other pad = new source.
+  C.ON / C.OF on the play page (Roland's message call); on the TIME/BPM page while TIME/BPM is held.
+- chr_play: kinds 6 and 3, only while the shown page is CPagePlay or CPageSmplEdit and not pattern mode
+  (*0x0CE327C8): a pad of the current bank (key 0..11) plays the source instead; afterwards every voice whose
+  +22 is the played pad gets vkey = key + 1 (0 for a stock start, so stale tags are cleared).
+- chr_release: the sounding key releases the source; other keys do nothing; everything else stock.
+- vari_fill: ratio = chr_ratio(voice, pad, pad_ratio(pad)) = pad speed x 2^(key/12) (Q16 table), clamped to
+  < 4x. Root key and non-chromatic voices return the pad speed unchanged, so normal speed stays Roland's fill.
+- TIME/BPM page while on: plain pad presses are swallowed (they are keys), so the page keeps showing the
+  source and CTRL 3 keeps setting the source's varispeed.
+- Code/data: 11 more factory test page methods (event / method 5 slots, the same kind already reused), each
+  with no branch in, no constant load from outside and only its own vtable pointer; slots pointed at the same
+  page's `return 0` method. State in CPageTestCompleted method 2 (SDRAM, zero in the image -> power-on off).
+- Host tests: test_chroma (34 checks: gesture, keys, banks, kinds, page/pattern guards, release, pitch table,
+  clamps, fill rate, root key bit-exact path).
+- Not verified on hardware: pattern-mode flag meaning (*0x0CE327C8, from build 12), kind numbers in practice,
+  the held-button query during a page switch, display texts.
+- Layout: vari_show moved out of the free area (CPageTestVer method 5) and vari_save out of the debug dump area
+  (CPageTestLine method 2) to make room; vari_ev (free area) wraps vari_event so the full CPageTestMidi area
+  is unchanged in size; chr_ok in the free area. Every area now has a few bytes or more left (build.py prints usage).
+- build.py: the new areas count as ours in the leftover-pointer check; the three hook sites may point at their
+  stubs only; after patching, literal-pool words of the stock image stay data (0x0C0CD700 is a literal whose only
+  loader was in the reused CPageTestExtract method 2, and otherwise decoded as a load into our area).
+- Toolchain check: GCC 13.3.0 built on macOS (binutils 2.42, `--with-multilib-list=m4,m4-nofpu`, system zlib)
+  rebuilds v2.00 byte-identical (SHA-256 3093b7e6...). Test build C1: MD5 fb34470b82bc73857d41d4bf0bda53e5,
+  3,959 program bytes changed, all checks passed. Not yet tested on hardware.
+
+## Test build C2 (MD5 3f3bdbff5447d1ec6f8b641a15627e4b) — C1 hardware report fixed
+- C1 report: C.ON shown, but only some pads played, and their pitches seemed random/inconsistent.
+- Cause 1: the play request 0x0C093D28 drops a pad whose sample isn't loaded (0x0C08A848(head buffer of the
+  pressed pad): 1 if +90152 >= 0) before play_pad, so empty keys never reached chr_play. Fix: hook the note
+  handler's own literal for the play request (0x0C08948C, loaded only at 0x0C0892DE; the two other literals of
+  0x0C093D28 stay stock) -> req_stub -> chr_request, which remaps keys before that check.
+- Cause 2: voice start 0x0C0963AC fills the first two 4096-frame blocks (~0.19 s) through fill() synchronously,
+  inside play_pad, but C1 tagged the voice only after play_pad returned: each attack used the voice's previous
+  tag. Fix: chr_request sets `pend` (key + 1) before the request; the play_pad hook sets the source's `cur` from
+  it just before Roland starts the voice (0 for any other start of the source); vari_fill pitches every voice
+  of the source by `cur`. One value is enough because a pad plays on one voice; the per-voice tags and the
+  voice table read (0x0CCAE0C8 +22) are gone.
+- Host mocks now model both (request drops unloaded pads; voice start renders its first block at the speed
+  vari_fill computes then); test_chroma checks all 12 keys incl. empty pads and each note's attack pitch.
+
+## Test build C3 (MD5 c5018c9b15b822e1a03b6abeb29a9457) — loop pads
+- C2 report: all 12 keys play, semitones steady. With LOOP on, every second press stopped the note, and looping
+  felt inconsistent.
+- play_pad: if the pad is playing (0x0C0842CC: a voice slot of the pad in state 1/2) it runs stop(pad, 0)
+  0x0C084400, 0x0C0845AC(7), 0x0C0845B8() (voice list upkeep), then returns if gate (+19) is off and loop
+  (+18) is on: the stock "press a loop pad again to stop". Every key is the source pad, so keys alternated.
+- Fix in chr_play (the play_pad hook, so after Roland's busy/loaded checks): when the press is a key (pend) other
+  than the one sounding (cur) and the source is playing, run that same stop sequence first; play_pad then sees
+  a stopped pad and starts the new note. The sounding key again goes to Roland unchanged (loop stops).
+- Loop restarts were checked: the sample player task's restarts (0x0C093E00 / 0x0C093E48 -> voice methods
+  0x0C094130 / 0x0C0941F4) and the new-sample auto-play (0x0C08B290) do not go through play_pad, so they
+  keep the note's pitch. If looping still sounds off in C3, it is something else (asked for details).
+- chr_play grew to 124 B: moved to CPageTestVer method 0 (0x0C0CEC38, slot 0x0C130124 -> 0x0C0CEF48),
+  passing the same checks as the other reused methods.
+
+## Test build C4 (MD5 b6e4f6ebe0408794a3094d4c9c3a0faa) — resampling
+- Report: chromatic keys stop working on the resample screen, and the gesture doesn't work there (chr_ok and the
+  gesture hooks only covered CPagePlay / CPageSmplEdit; resampling is CPageReSmpling, vtable 0x0C12F270).
+- CPageReSmpling: event 0x0C0CAF40 (slot 0x0C12F28C) -> buttons 0x0C0CA7C4. Page +8 = state: 1..2 choosing the
+  destination (pad button: if the pad is empty, 0x0C0903D4, it becomes the destination), 3 "---", 4 RDY, 5 REC
+  (texts at 0x0C12F23C...; display code 0x0C0CA64E). Pad buttons only act in states 1..2; TIME/BPM (id 40) is
+  ignored on this page in every state, so the hold-TIME/BPM gesture is safe there.
+- chr_ok: also CPageReSmpling with state >= 3, so choosing the destination stays stock (otherwise empty keys
+  would both play and move the destination).
+- Gesture on the resample page: slot 0x0C12F28C -> rsm_stub. pev_stub / rsm_stub share chr_page_event(page, e,
+  Roland's handler, show); the resample page passes show = 0 so RDY / REC is never overwritten.
+
+## Test build C5 (MD5 cda07ba1db88e4e653dca75c2dbb517f) — five octaves, CANCEL exits
+- Requested: CANCEL leaves chromatic mode (a separate mode), and banks A..E as a keyboard with bank C pad 1 at
+  the source's own pitch (A/B lower, D/E higher). Bank E needs up to +35 st = 7.55x; owner chose to extend
+  the engine to 8x. Automatic jump to bank C not done (bank select 0x0C0D0B10 is tangled with A/F toggling
+  and other state); the bank stays where it is.
+- Buttons: switch test order table 0x0C12FFC4 + CPageTestSw texts: 34 = CANCEL ("CAN", 0x0C130030), 35 = REMAIN.
+  Bank buttons A..E = ids 25..29 (play page: 0x0C0D0B10(id - 25)). On the play page CANCEL is only a modifier
+  (Roland checks it held: 0x0C0BEA7C(34)); on the resample page id 34 has its own action (0x0C0CAA72).
+- Keys = pads 0..59 (banks A..E), semitones = pad - 24; banks F..J stock. MIDI: base channel notes 47..106 =
+  pads 0..59, so note 71 = root, one contiguous 60-note range.
+- CANCEL: a tap (press, release, no other button press in between) on the play / TIME/BPM page turns the mode
+  off (C.OF); the resample page hook ignores CANCEL (show = 0) so it keeps cancelling the resample. TIME/BPM +
+  pad now only selects the source (the source again keeps it on).
+- chr_ratio: semitones -> octave shift (exact) x 2^(s/12) table, no division (GCC used dmulu.l for / 12 and
+  % 12; not on the allow-list, so a subtraction loop). Worst error 0.05 cent over all 60 keys. Stored key
+  bytes above 60 are ignored (stress test found the overflow). Clamp V_MAX just under 8x; PTN keeps R_MAX 4x.
+- Resampler: the one-at-a-time path consumes floor(ph) <= floor(r) + 1 frames; tL/tR 4 -> 8 frames supports
+  r < 8x (ASan: the old 4-frame buffer overflows above 4x, confirmed with the new cases). frames_needed stays
+  < 2^32 (ph + 4095 r < 2^16 + 2^31). vari_fill frame 108 B (+16).
+- Host tests: resampler 1080 cases bit-exact (new: 4x..7.9x and 1/8x); stress now randomizes chromatic keys and
+  stored bytes (420M source frames for 307M outputs); test_chroma covers the 60-key layout, F..J, CANCEL taps
+  and combinations, resample CANCEL, clamps, every key x speed.
+- One more reused method: CPageTestDevice method 0 (0x0C0CF49C, slot 0x0C1302F0 -> 0x0C0CF7B8).
+- To watch on hardware: SD read speed with long samples at 6..7.5x (bank E).
+
+## Test build C6 (MD5 ba79701d3039baa55de0081b2209c019) — empty banks, SHIFT combination, C.ON on screen
+- C5 report: banks C..E didn't play from the panel (MIDI did); in fact any bank without samples. The flag
+  *0x0CE327C8 (taken from build 12 as "pattern mode") is "no current pad": set by the parameter code when a bank
+  is selected (0x0C082B80 / 0x0C082C7C -> setter 0x0C0F1A3C(1)), cleared by play_pad for panel presses
+  (0x0C0F1A3C(0)); getter 0x0C0F1A34 (the TIME/BPM page shows the pattern tempo in that state). chr_ok refused
+  keys while it was set: in a bank with samples the first press played its own pad and cleared it; in an empty
+  bank Roland dropped the press, so it stayed set. Pattern mode is a page of its own (CPagePtnSel, slot 18;
+  pattern recording CPagePtnRec), so chr_page() now decides on the page only.
+- Page slots (registry 0x0CDAF84C filled at 0x0C0BEF24 from 0x0C138C20): 1 Play, 2 MFXSelect, 3 TrigLevel,
+  4 Smpling, 5 ReSmpling, 6 SmplEdit, 8 PadDel, 9 PadDelAll, 10 PadExch, 11 PadCopy, 13 SdFormat, 14 Remain,
+  18 PtnSel.
+- SHIFT = button 20: no action of its own on the play page (handler table 0x0C0C4EF4, index id - 15), only
+  checked held (with 39 / 40: BWD / FWD while *0x0C138F5C is set; with 44). Not confirmed on hardware.
+- Combination SHIFT + TIME/BPM + pad (outside FWD mode): the TIME/BPM press is kept from Roland (chr_eat: play
+  page hook before Roland's handler, vari_ev on the TIME/BPM page); the pad selects the source; chr_request
+  drops panel notes and chr_release ignores releases while SHIFT and TIME/BPM are held on a chromatic page.
+- C.ON: the play page's idle display is blank (enter clears it, 0x0C0CFF34); Roland draws values / messages
+  over it. New hooks: CPagePlay enter (slot 0x0C12E050 -> pen_stub) and refresh (slot 0x0C12E078 -> pref_stub;
+  the UI loop calls vtable +52 of the shown page every other tick, 0x0C0BEA48). chr_st.show is set on enter and
+  by every chromatic note (note task); the refresh (UI task) draws C.ON with Roland's message call.
+- More reused methods (same checks): CPageTestMute method 3, CPageTestSw method 0, CPageTestCompleted method 0,
+  CPageTestVolume method 5. Stubs split in two groups.
+
+## Test build E1 (MD5 55170ff23b200b76bcb328a3aa7c89cc) — chromatic mode per bank, menu, MIDI channels, saving (replaces the C builds' design)
+- Owner's redesign: SHIFT + TIME/BPM turns the last pad played into its bank's chromatic source and opens a
+  chromatic menu (TIME/BPM blinking); CTRL 1 MIDI channel (lowest free by default; only free ones offered;
+  fully left OFF), CTRL 2 mono / poly, CTRL 3 octave -2..+2; any number of banks; MIDI note 60 = own pitch,
+  silent above B6 (owner's choice), octave knob for pads only; saved on the card. Poly is left for E2 (one
+  risky change per build): stored and shown, plays mono.
+- Menu = TIME/BPM page mode 9. The play page event hook only flags SHIFT + TIME/BPM (Roland still opens the
+  page); the page's first display (our hook) opens the menu. In mode 9 Roland ignores the knobs (dispatcher
+  handles modes 1..7) and leaves the page on TIME/BPM (handler 0x0C0CB8A0: modes other than 5..7 -> exit).
+  LED: the TIME/BPM page refresh draws the display (0x0C0CC10C) and then the LEDs (0x0C0CC110, 0x0C0CBEFC); the
+  LED routine's path for modes outside 1..8 now writes 2 (blink) to the TIME/BPM LED (0x0C0CBF12 e500 -> e502).
+  LED driver: per-LED patterns in a multi-plane buffer scanned on a global clock (0x0C0ADEF8).
+- Display font (0x0C0AE9E4, tables at 0x0C12CA94.. for digits, 0x0C12CA8F + 'A'): every letter has a glyph.
+- MIDI in: the receiver posts note events for every channel (0x0C0F2670..: note <= 127 and MIDI on); the note
+  handler 0x0C089330 subtracts the SP's channel (param 2) and drops channels other than it and the next. Hook:
+  the event loop's literal for it (0x0C08F778, the loop calls it with r4 = event, result ignored) ->
+  note_stub -> chr_note: kind 3 on a chromatic bank's channel plays its source through Roland's play request
+  (object 0x0CCAE0C4) with the pitch pending; note off (velocity 0 or 255) releases it via 0x0C084B48.
+  Pattern playback posts kind 2 (sequencer 0x0C0BBB48).
+- State: chr_tab (CHROMA.BIN: "CHR1" + 10 x {src + 1, channel, mode: octave + 2 in bits 0..2, poly bit 3,
+  fingerprint}), chr_st (per bank: sounding key / MIDI note, current pitch; pending pitch; menu). Mono pitch
+  per source; the per-voice fill path is unchanged. chr_check turns off entries that don't fit or whose
+  sample fingerprint changed (load and every tick). chr_tick wraps vari_tick (tick_stub literal) for load/save.
+- Code space (E1 needs ~2.9 KB): more factory test page methods, with new build checks.
+  * Pool-sharing methods (chrx/chry/chrz: CPageTestExtract / Midi / Mute method 5): constant loads into them
+    only from their page's earlier methods (POOL_SPANS); each span + area has no branch in from outside, no
+    pointer in except from test page vtables, and no test vtable load (constructors run at boot). Rejected:
+    CPageTestVer m3, CPageTestVolume m3, CPageTestSw m2 (loaders after a constructor, in code not proven dead).
+  * First methods starting right after a literal pool word (chrs/chru/chrv): start check accepts a stock pool
+    word before the prologue.
+  * chrw = 0x0C0CE860..0x0C0CEC34 (980 B): helper functions after the CPageTestSw constructor (0x0C0CE838..,
+    live via the init table at 0x0C131B04, kept), reached only by 6 branches from CPageTestVer methods (4 in
+    chrl, already ours). The build checks exactly those sources and their span.
+  * Every function in its own section; placement found with a small bin-packing search (link.ld).
+  * Allow-list kept as is: GCC's dmulu.l (/ 12) and rotcl (bit packing) avoided by code shape (loops, mode
+    layout with poly in bit 3).
+- Host tests: test_chroma rewritten (78 checks: menu, knobs, channel lists, OFF, keys and octaves, pages,
+  releases, MIDI notes / offs / range / other channels, two banks, loops, every pitch x speed, saving incl.
+  random file contents, C.ON); resampler 1080 bit-exact (down to -60 semitones); stress with per-bank state.
+
+## Test build E1b (MD5 884f1a72ddd2cce83cac3eee82175170) — MIDI chromatic while resampling
+- E1 report: chromatic pads work while resampling, MIDI doesn't. The MIDI receiver (0x0C0F2528, r8 = event)
+  posts a note only if 0x0C08FD70() == 1 (0x0C0F2676..7C); that returns 0 while *0x0CC1CB8C is set (sampler
+  recording) or *0x0CCAFCF8 == 1, so stock ignores all MIDI notes while sampling / resampling.
+- Hook: the receiver's own literal for it (0x0C0F2784, loaded only at 0x0C0F2676; the note handler's literal
+  0x0C089480 stays stock) -> gate_stub (passes r8) -> chr_gate(event, gate): a kind-3 note on a chromatic bank's
+  channel while the resample page is at RDY / REC (chr_page() == 2) gets through; everything else gets Roland's
+  answer. Host tests: 10 gate checks.
+
+## Test build E1c (MD5 1e7cc6b8ccfb3586c0ce9e1706621e64) — chromatic MIDI starts the resample
+- E1b confirmed on hardware (MIDI chromatic plays while resampling). Report: at RDY only a pad press starts the
+  resample, not a chromatic MIDI note.
+- Resample start: Roland's note handler 0x0C089330 first calls 0x0C08FDDC(): if the sampler (0x0CC1CB88) is armed
+  (+4 state 1, +8 1, +20 1) it runs 0x0C08FD98: sampler state -> 3 (recording) and message 0 to the UI queue
+  0x0CDAF744 (0x0C0D1BA0); the UI loop (0x0C0D1AE0..) hands it to the page's method 5 (vtable +44), and the
+  resample page's 0x0C0CAFFC moves RDY -> REC from the sampler's state (query 0x0C0901FC id 0 = *0x0CC1CB8C).
+  So the first note event reaching the handler starts the resample. chr_note handled chromatic MIDI before
+  Roland's handler and skipped it; it now calls 0x0C08FDDC first for every event on a chromatic channel.
+- chr_show moved to chrw (chr_note grew). Host tests: 3 more checks.
+- E1c confirmed on hardware (2026-11-02): a chromatic MIDI note at RDY starts the resample.
+
+## Test build E1d (MD5 aa86410c1c0133386cb2f2428b8a5d32) — any MIDI note while resampling; CTRL 2 mono only
+- Request: any MIDI note (not only chromatic channels) can start the resample; remove POL from CTRL 2 for now.
+- Roland checks "MIDI notes allowed" (0x0C08FD70: 0 while the sampler runs) twice: in the MIDI receiver (literal
+  0x0C0F2784, hooked in E1b) and in both note handlers for MIDI events (shared literal 0x0C089480, loaded at
+  0x0C08930A in 0x0C0892F0 and 0x0C08935E in 0x0C089330, each right after a kind == 3 test, jsr/n @r3, no
+  arguments). Opening only the first would start the recording (0x0C08FDDC runs first) but drop the note.
+  Now: chr_gate lets any MIDI note through at resample RDY / REC, and chr_gate2 (gate2_stub on 0x0C089480)
+  answers 1 there, Roland's answer elsewhere. Choosing the destination and sampling stay stock.
+- CTRL 2 shows MON and keeps the poly bit clear (POL text removed).
+
+## Test build E1e (MD5 5ea84e913f6b901b87230cd4b5139bf7) — menu exits on another pad when OFF
+- Stock TIME/BPM page: a pad other than the one shown -> setpage(1) (0x0C0CB8C4), back to the main screen; the
+  same pad does nothing. In the chromatic menu, pad presses now go to Roland when the menu's bank is OFF (so the
+  same happens); while the bank is chromatic they stay keys (swallowed for the page).
+- MIDI channel 2 question: the SP-404SX/A receives on its channel (param 2) for pads 1..60 and on the next one for
+  pads 61..120 (0x0C089330: channel - param 2, 0x0C0F1610), so chr_used reserves both. Kept as is (owner didn't
+  choose to free it).
+
+## Test build v2.10a (MD5 e1f88bfa3dfdd68121ceb4cfa6ff52d7) — version 2.10, menu exit, page keys, HOLD
+- Version: release name becomes v2.10. Version text routine 0x0C0F112C: digits of 107 at 0x0C0F116C (hundreds),
+  0x0C0F115A (tens), 0x0C0F1142 (ones), each `add #48`: now +49, +49, +41 -> "2.10".
+- Menu: Roland's TIME/BPM page handler takes SHIFT + TIME/BPM for itself, so in mode 9 chr_menu_ev leaves the page
+  itself on any TIME/BPM press (setpage(1), 0x0C0BE884, as Roland's own exit at 0x0C0CB8C4).
+- TIME/BPM page outside the menu (TIME/BPM views 5..8 and START/END/LEVEL views 1..4): a pad of a chromatic bank
+  is swallowed (chr_padkey), so the page stays (Roland would setpage(1) for another pad). Notes play anyway.
+- HOLD: hold state per pressed pad 0x0CE327DC[pad]; on press, 0x0C0F1D50 arms it (1, or 2 with HOLD on,
+  *0x0CE327D8) only if R_GET(38 = GATE, pad) == 1; on release 0x0C0F1CB8 (state 2) latches it (3) and drops the
+  release; pressing a latched pad turns into its release (0x0C0F1CE8 / 0x0C0F1D34). Keys had their own GATE (off,
+  or empty pads), so only the source latched. Hook: that R_GET call's own literal 0x0C0F1DD4 (loaded once, at
+  0x0C0F1D5A) -> hold_stub -> chr_holdget: keys answer with the source's GATE. Each key latches like a pad.
+- Varispeed copy / exchange (reported not following): nothing in its saving path changed since v2.00 except that
+  the tick goes through chr_tick (which calls vari_tick unchanged); the PAD_INFO pointer table 0x0C17B14C is never
+  rewritten (only entries are), so the fingerprint reads the right pads. Asked the owner for details.
+
+## Test build v2.10b (MD5 3dcd9d530a3ff3129301c02248b211be) — MARK keeps the chromatic note
+- Report: MARK on a sounding chromatic note -> the sample continues at its own pitch until the next key.
+- chr_play set cur = pend (0) for every non-key start of the source. MARK has Roland restart the pad itself
+  (candidate: 0x0C08B290, which re-estimates the BPM from the marks and requests the pad again with kind 6, through
+  the play request's own literal, not the note handler's). Key presses of a chromatic bank always come with a
+  pending pitch (the source pad is a key of its own bank), so a kind-6 start without one on a chromatic page is
+  Roland restarting the source: cur is kept. Other kinds (pattern playback = 2) and other pages: own pitch.
+  The exact MARK path is not traced; the rule covers any such restart.
+
+## Test build v2.10c (MD5 cc470b9ebb1bf00a55dfec7ad36ac864) — varispeed follows copy / exchange explicitly
+- Report: after exchanging two pads at different speeds, each pad kept its own speed (same for copy). Cause: the
+  v2.00 design moves speeds in resync by matching 1-byte fingerprints (data end, format, channels); identical
+  samples (a copy and its source, or two copies) have equal fingerprints, so a swap or copy between them is
+  invisible, and with several identical pads resync takes the first match's speed.
+- Roland's path: copy page (CPagePadCopy, pad handler 0x0C0C31B4) confirms with 0x0C0904C0(src, dst), exchange page
+  with 0x0C090464(a, b). Both set params 60 / 61 and post command 12 (copy) / 11 (exchange) to the file task
+  (event 0xA4, byte 3 = command; switch 0x0C08F5B0). Job wrappers 0x0C088BB0 / 0x0C088C6C call the workers
+  0x0C087A64 (copy) / 0x0C087DEC (exchange) through their own literals 0x0C088BF8 / 0x0C088CB4 (each loaded
+  once, jsr/n; the workers are referenced from nowhere else), then post the result back (byte 2: 1 = done, 2 =
+  failed; the worker returned 0 / non-0). The workers read params 60 / 61 themselves and save PAD_INFO.
+- Hook: both literals -> xcopy_stub / xexch_stub -> vari_xop(worker, exch): reads the pads (params 60 / 61) and
+  their speeds before the job, runs it, and on success sets dest = source speed (copy) or swaps (exchange), with
+  fresh fingerprints and the save timer started. The speeds are taken before the job because resync (100 ms tick,
+  other task) may see the half-done PAD_INFO. Chromatic banks are unchanged (a bank whose source sample changes
+  still turns off).
+- Space: vari_xop 172 B + vari_xset 48 B in chrw; chr_check moved from chrw to chry. Stubs in chrstubs2 (shared tail).
+
+## Release v2.10 (= test build v2.10c, SHA-256 733885e5935d0c2c4c887f0446afa8e2546d2520223cec7ccbe9297c08066b54)
+- Built with GCC 13.3.0 / binutils 2.42 built from source on macOS; byte-identical to the v2.10c file tested on
+  hardware. Patch data regenerated (RELEASE = '2.10': 246 runs, 6784 bytes).
+- Checks: host tests; patch.py output identical to the build; the web patcher's code (patcher-core.js + patch
+  data) run in JavaScriptCore (no Node on this machine; same checks as check_web_patch.js): official file
+  accepted, result byte-identical with the release hash, patched file recognised, modified input refused.

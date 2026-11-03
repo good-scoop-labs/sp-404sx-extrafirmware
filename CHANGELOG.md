@@ -1,5 +1,22 @@
 # Changelog
 
+## v2.10
+
+The version screen shows `2.10`. Output `sp404sx_up.bin` SHA-256
+`733885e5935d0c2c4c887f0446afa8e2546d2520223cec7ccbe9297c08066b54`.
+
+- **Chromatic mode per bank:** SHIFT + TIME/BPM opens a chromatic menu for the last pad played (TIME/BPM
+  blinks) and makes its bank a keyboard for it: pad 1 = own pitch, + 1 semitone per pad. CTRL 1 MIDI channel
+  (free ones only) or OFF, CTRL 2 mono (poly later), CTRL 3 octave −2 … +2. Several banks at once.
+  MIDI on a bank's channel: note 60 = own pitch, silent above B6. Saved in `CHROMA.BIN`. SHIFT + TIME/BPM or
+  TIME/BPM leaves the menu. Pads of a chromatic bank don't close the TIME/BPM or START/END/LEVEL page, and HOLD
+  works on every pad of the bank.
+- While resampling (`RDY` / `REC`) every MIDI note plays like a pad press, and the first one starts the
+  recording (stock ignores MIDI notes while sampling).
+- Varispeed now follows the sample on copy and exchange even between identical samples (it is moved when
+  Roland's copy / exchange finishes, instead of only by matching sample fingerprints).
+- The resampler handles speeds up to just under 8× (chromatic notes); PTN keeps its 4× limit.
+
 ## v2.00
 
 First public release, a full new version over Roland's system 1.07, for the SP-404SX and SP-404A.

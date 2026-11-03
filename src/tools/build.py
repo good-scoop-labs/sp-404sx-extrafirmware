@@ -19,8 +19,14 @@ Patches on top of stock 1.07 (addresses in the unpacked image, loaded at 0x0C080
   * CPageSmplEdit (TIME/BPM page): event vtable slot 0x0C12F414 -> ev_stub; 12-byte trampoline at 0x0C0CB5D4 ->
     disp_stub; light (0x0C0CBF0C) and refresh (0x0C0CC0E6) mode ranges extended to the CTRL 3 view
   * fill() slot of all 10 CSmplCharge vtables -> fill_fwd / fill_rev (wrapping Roland's 0x0C0914B8 / 0x0C0921FC)
-  * version screen text 1.07 -> 2.00 (0x0C0F1142, 0x0C0F116C)
+  * version screen text 1.07 -> 2.10 (0x0C0F1142, 0x0C0F115A, 0x0C0F116C)
   * PAD_INFO load pointer 0x0C093D78 and 100 ms auto-save pointer 0x0C0EF4E8 -> load_stub / tick_stub
+  * chromatic mode: the note handler's play request literal 0x0C08948C -> req_stub, pad start pointer 0x0C093F44
+    and pad release pointer 0x0C093F38 -> play_stub / rel_stub,
+    CPagePlay event / enter / refresh slots 0x0C12E060 / 0x0C12E050 / 0x0C12E078 -> pev_stub / pen_stub /
+    pref_stub, the event loop's note handler literal 0x0C08F778 -> note_stub, the MIDI receiver's and the note handlers' note gate
+    literals 0x0C0F2784 / 0x0C089480 -> gate_stub / gate2_stub, HOLD's GATE lookup literal 0x0C0F1DD4 -> hold_stub;
+    pad copy / exchange worker literals 0x0C088BF8 / 0x0C088CB4 -> xcopy_stub / xexch_stub (varispeed follows the sample); TIME/BPM LED blinks in mode 9; code and state in 11 more factory test page methods
 
 usage: python3 src/tools/build.py official/sp404sx_up.bin [-o out/sp404sx_up.bin]
 """
@@ -67,13 +73,72 @@ LED_RANGE, LED_RANGE_OLD, LED_RANGE_NEW = 0x0C0CBF0C, bytes.fromhex('e406 3346 8
 REFRESH_RANGE, REFRESH_OLD, REFRESH_NEW = 0x0C0CC0E6, bytes.fromhex('e402 73fb 3346 890e'), 0xE403
 # Version screen (hold MARK at power-on): Roland's text routine 0x0C0F112C turns the version number 107 into
 # digits by adding '0'. The number itself (0x0C0F1128, also read by the removed test pages) stays 107; only
-# the text changes: last digit 7 + 0x29 = '0', first digit 1 + 0x31 = '2', so the screen shows 2.00.
+# the text changes: last digit 7 + 0x29 = '0', middle digit 0 + 0x31 = '1', first digit 1 + 0x31 = '2': 2.10.
 VERSION_TEXT = ((0x0C0F1142, 0x7030, 0x7029),   # add #48,r0 -> add #41,r0 (ones digit: '7' -> '0')
+                (0x0C0F115A, 0x7030, 0x7031),   # add #48,r0 -> add #49,r0 (tens digit: '0' -> '1')
                 (0x0C0F116C, 0x7030, 0x7031))   # add #48,r0 -> add #49,r0 (hundreds digit: '1' -> '2')
 # More test page methods with no literal pool used from outside, no branch in, one vtable pointer:
 # (section, start, end, vtable slot, the same page's `return 0` method)
 EXTRA = (('midi', 0x0C0CDDDC, 0x0C0CDEBC, 0x0C12FD24, 0x0C0CE074),     # CPageTestMidi method 2
-         ('led',  0x0C0CD838, 0x0C0CD8FC, 0x0C12F9A4, 0x0C0CD900))     # CPageTestLED method 5
+         ('led',  0x0C0CD838, 0x0C0CD8FC, 0x0C12F9A4, 0x0C0CD900),     # CPageTestLED method 5
+         # chromatic mode: more methods of the factory test pages (unreachable since test mode is off)
+         ('chra', 0x0C0CEEB0, 0x0C0CEF44, 0x0C13014C, 0x0C0CEF48),     # CPageTestVer method 5
+         ('chrb', 0x0C0CD4D0, 0x0C0CD55C, 0x0C12F89C, 0x0C0CD740),     # CPageTestExtract method 2
+         ('chrc', 0x0C0CD238, 0x0C0CD2C4, 0x0C12F6E4, 0x0C0CD2C8),     # CPageTestBattery method 5
+         ('chrd', 0x0C0CE134, 0x0C0CE1A8, 0x0C12FE1C, 0x0C0CE3A4),     # CPageTestMute method 2
+         ('chre', 0x0C0CD7BC, 0x0C0CD828, 0x0C12F98C, 0x0C0CD900),     # CPageTestLED method 2
+         ('chrf', 0x0C0CD1BC, 0x0C0CD228, 0x0C12F6CC, 0x0C0CD2C8),     # CPageTestBattery method 2
+         ('chrg', 0x0C0CE444, 0x0C0CE4A8, 0x0C12FEF8, 0x0C0CE4E0),     # CPageTestPhones method 2
+         ('chrh', 0x0C0CDC88, 0x0C0CDCEC, 0x0C12FC30, 0x0C0CDD24),     # CPageTestMicInt method 2
+         ('chri', 0x0C0CDB20, 0x0C0CDB84, 0x0C12FB44, 0x0C0CDBBC),     # CPageTestMicExt method 2
+         ('chrj', 0x0C0CD9D0, 0x0C0CDA34, 0x0C12FA68, 0x0C0CDA6C),     # CPageTestLine method 2
+         ('chrk', 0x0C0CD398, 0x0C0CD3FC, 0x0C12F7B0, 0x0C0CD414),     # CPageTestCompleted method 2
+         ('chrl', 0x0C0CEC38, 0x0C0CECC8, 0x0C130124, 0x0C0CEF48),     # CPageTestVer method 0
+         ('chrm', 0x0C0CF49C, 0x0C0CF51C, 0x0C1302F0, 0x0C0CF7B8),     # CPageTestDevice method 0
+         ('chrn', 0x0C0CE1A8, 0x0C0CE214, 0x0C12FE24, 0x0C0CE3A4),     # CPageTestMute method 3
+         ('chrp', 0x0C0CE720, 0x0C0CE768, 0x0C130044, 0x0C0CE834),     # CPageTestSw method 0
+         ('chrq', 0x0C0CD358, 0x0C0CD394, 0x0C12F7A0, 0x0C0CD414),     # CPageTestCompleted method 0
+         # larger test page methods whose literal pools the page's earlier methods share; see POOL_SPANS
+         ('chrx', 0x0C0CD56C, 0x0C0CD73C, 0x0C12F8B4, 0x0C0CD740),     # CPageTestExtract method 5
+         ('chry', 0x0C0CDEE4, 0x0C0CE070, 0x0C12FD3C, 0x0C0CE074),     # CPageTestMidi method 5
+         ('chrz', 0x0C0CE280, 0x0C0CE3A0, 0x0C12FE34, 0x0C0CE3A4),     # CPageTestMute method 5
+         # first methods that start right after a literal pool word instead of a nop / rts
+         ('chrs', 0x0C0CD474, 0x0C0CD4BC, 0x0C12F88C, 0x0C0CD740),     # CPageTestExtract method 0
+         ('chru', 0x0C0CDC20, 0x0C0CDC70, 0x0C12FC20, 0x0C0CDD24),     # CPageTestMicInt method 0
+         ('chrv', 0x0C0CD974, 0x0C0CD9B0, 0x0C12FA58, 0x0C0CDA6C),     # CPageTestLine method 0
+         # helper functions after the CPageTestSw constructor (0x0C0CE838..0x0C0CE85F, live, kept), called only by
+         # CPageTestVer methods; no vtable slot (see HELPER_BLOCK)
+         ('chrw', 0x0C0CE860, 0x0C0CEC34, None, None))
+# chrw: the only branches into it, all from CPageTestVer methods (span below: no constructor, reached only through
+# its vtable); 4 of them are inside chrl, which is replaced by our code.
+HELPER_BLOCK = ('chrw', (0x0C0CEC9E, 0x0C0CECA8, 0x0C0CECB4, 0x0C0CECB8, 0x0C0CED4C, 0x0C0CEE4C), (0x0C0CEC38, 0x0C0CEF48))
+# For these, constant loads into the area are allowed only from inside the span of that page's earlier methods.
+# The build checks that each span is dead like the area itself: no branch into it from outside, no pointer into it
+# except from a test page vtable, and no load of a test page vtable in it (a constructor, which runs at boot).
+POOL_SPANS = {'chrx': (0x0C0CD474, 0x0C0CD56C), 'chry': (0x0C0CDD88, 0x0C0CDEE4), 'chrz': (0x0C0CE0A0, 0x0C0CE280)}
+TEST_VTABLES = (0x0C12F6B0, 0x0C12F794, 0x0C1302E4, 0x0C12F880, 0x0C12F970, 0x0C12FA4C, 0x0C12FB28, 0x0C12FC14,
+                0x0C12FD08, 0x0C12FE00, 0x0C12FEDC, 0x0C130038, 0x0C130118, 0x0C1301F0)
+TEST_VT_AREA = (0x0C12F6B0, 0x0C130330)
+# Chromatic mode hooks: pointers through which Roland calls pad start / pad release, and the play page's
+# event vtable slot (pointer site, Roland function it held)
+REQ_PTR, REQ_FN, REQ_LOAD = 0x0C08948C, 0x0C093D28, 0x0C0892DE   # note handler -> play request (its own literal)
+PLAY_PTR, PLAY_FN = 0x0C093F44, 0x0C084974       # play request 0x0C093D28 -> start pad (kind, pad, vel)
+REL_PTR, REL_FN = 0x0C093F38, 0x0C084B48         # release request 0x0C093DE4 -> pad released (pad)
+PEV_SLOT, PEV_FN = 0x0C12E060, 0x0C0C5384        # CPagePlay vtable: event handler
+NOTE_PTR, NOTE_FN = 0x0C08F778, 0x0C089330      # event loop 0x0C08F708 -> note handler (event)
+GATE_PTR, GATE_FN, GATE_LOAD = 0x0C0F2784, 0x0C08FD70, 0x0C0F2676   # MIDI receive -> "notes allowed?" (its own literal)
+GATE2_PTR, GATE2_LOADS = 0x0C089480, (0x0C08930A, 0x0C08935E)      # note handlers -> the same check, MIDI events only
+HOLD_PTR, HOLD_LOAD = 0x0C0F1DD4, 0x0C0F1D5A    # HOLD check 0x0C0F1D50 -> R_GET(38 = GATE, pressed pad) (its own literal)
+# Varispeed follows copy / exchange: the file task's job wrappers (commands 12 / 11, 0x0C088BB0 / 0x0C088C6C) call
+# Roland's workers through their own literals, each loaded once; the workers take the pads from params 60 / 61
+XCOPY_PTR, XCOPY_FN, XCOPY_LOAD = 0x0C088BF8, 0x0C087A64, 0x0C088BD2   # copy worker (0 = done)
+XEXCH_PTR, XEXCH_FN, XEXCH_LOAD = 0x0C088CB4, 0x0C087DEC, 0x0C088C8E   # exchange worker (0 = done)
+# TIME/BPM LED: modes other than 1..8 (the chromatic menu, mode 9) blink the TIME/BPM button instead of
+# turning it off: `mov #0,r5` -> `mov #2,r5` (LED value 2 = blink)
+LED_BLINK, LED_BLINK_OLD, LED_BLINK_NEW = 0x0C0CBF12, bytes.fromhex('e500 480b e415'), 0xE502
+PEN_SLOT, PEN_FN = 0x0C12E050, 0x0C0C5250        # CPagePlay vtable: enter
+PREF_SLOT, PREF_FN = 0x0C12E078, 0x0C0C53F4      # CPagePlay vtable: refresh (UI loop, every other tick)
+CHR_DATA = ('chrk', 'chrg')                      # areas holding only chromatic tables, texts and state (no code)
 CF = '-m4-nofpu -mb -Os -ffreestanding -fno-pic -fno-builtin -nostdlib -fno-asynchronous-unwind-tables -fno-jump-tables'.split()
 
 DENY = {'pref', 'movca.l', 'ocbi', 'ocbp', 'ocbwb', 'ldtlb', 'icbi', 'prefi', 'synco', 'movli.l', 'movco.l',
@@ -96,16 +161,17 @@ def compile_all():
          '-Map', 'vari.map', '-o', 'vari.elf', 'stubs.o', 'vari.o', 'ratio.o'])
     run(['sh4-linux-gnu-objcopy', '-O', 'binary', '-j', '.entry', 'vari.elf', 'cave.bin'])
     run(['sh4-linux-gnu-objcopy', '-O', 'binary', '-j', '.text', 'vari.elf', 'dump.bin'])
-    for sec in ('persist', 'wsp', 'helper', 'dev', 'midi', 'led'):
+    for sec in ('persist', 'wsp', 'helper', 'dev', *(n for n, *_ in EXTRA)):
         run(['sh4-linux-gnu-objcopy', '-O', 'binary', '-j', '.' + sec, 'vari.elf', sec + '.bin'])
     syms = {}
     for line in run(['sh4-linux-gnu-nm', 'vari.elf']).splitlines():
         a, t, n = line.split()
         syms[n] = int(a, 16)
     assert not run(['sh4-linux-gnu-nm', '-u', 'vari.elf']).strip(), 'undefined symbols'
-    dis = run(['sh4-linux-gnu-objdump', '-d', '-j', '.entry', '-j', '.text', '-j', '.persist', '-j', '.helper', '-j', '.dev', '-j', '.midi', '-j', '.led', 'vari.elf'])
+    code = ('.entry', '.text', '.persist', '.helper', '.dev', *('.' + n for n, *_ in EXTRA if n not in CHR_DATA))
+    dis = run(['sh4-linux-gnu-objdump', '-d', *(x for s in code for x in ('-j', s)), 'vari.elf'])
     rd = lambda n: open(os.path.join(SRC, n), 'rb').read()
-    return rd('cave.bin'), rd('dump.bin'), rd('persist.bin'), rd('wsp.bin'), rd('helper.bin'), rd('dev.bin'), {n: rd(n + '.bin') for n in ('midi', 'led')}, syms, dis
+    return rd('cave.bin'), rd('dump.bin'), rd('persist.bin'), rd('wsp.bin'), rd('helper.bin'), rd('dev.bin'), {n: rd(n + '.bin') for n, *_ in EXTRA}, syms, dis
 
 def check_instructions(dis, syms, cave_len):
     """Decoded instructions in code ranges must be on the SH-2A allow-list.
@@ -119,6 +185,8 @@ def check_instructions(dis, syms, cave_len):
             pools.update(range(t, t + (4 if p[2].split()[0] == 'mov.l' else 2), 2))
     data = [(syms['dump_ok'] + 4, syms['stub_lits_end']),                   # stub literals
             ((syms['tick_stub'] + 0x22 + 3) & ~3, syms['persist_lits_end']),  # persistence stub literals
+            (syms['chr_lits'], syms['chr_lits_end']),                        # chromatic stub literals
+            (syms['chr_lits2'], syms['chr_lits2_end']),
             (syms['vari_need_load'], CAVE + cave_len),                     # .cavedata
             (WSPFN, WSPFN_END)]                                            # ratio table + path
     bad, seen = [], set()
@@ -180,6 +248,16 @@ def const_loads_into(img, lo, hi, skip):
         if lo <= t < hi: hits.append((a, t))
     return hits
 
+def const_loads_into_value(img, value):
+    """(load address, pool address) of every mov.l @(disp,PC) in the image that loads `value`."""
+    res = []
+    for i in range(0x800, len(img) - 1, 2):
+        op = (img[i] << 8) | img[i + 1]
+        if op >> 12 == 0xD:
+            a = BASE + i; t = (a & ~3) + 4 + (op & 0xFF) * 4
+            if t + 4 <= BASE + len(img) and struct.unpack('>I', img[t - BASE:t - BASE + 4])[0] == value: res.append((a, t))
+    return res
+
 def u32(buf, addr):
     return struct.unpack('>I', buf[addr - BASE:addr - BASE + 4])[0]
 
@@ -199,7 +277,7 @@ def build(official):
     assert WSPFN + len(wsp) <= WSPFN_END and HELPER_CODE + len(helper) <= HELPER_END
     assert DEV + len(dev) <= DEV_END and syms['base_bpm'] == DEV
     for n, lo, hi, slot, ret0 in EXTRA:
-        assert lo + len(extra[n]) <= hi and extra[n]
+        assert lo + len(extra[n]) <= hi and extra[n], f'{n} empty or too big'
     assert syms['vari_path'] >= WSPFN and syms['pad_fp'] == HELPER_CODE and syms['resync'] >= OSFN
     load_stub, tick_stub = syms['load_stub'], syms['tick_stub']
     disp_stub, ev_stub, fill_fwd, fill_rev, dump_ok = (syms[n] for n in ('disp_stub', 'ev_stub', 'fill_fwd', 'fill_rev', 'dump_ok'))
@@ -224,18 +302,63 @@ def build(official):
     assert ptr == [DEV_SLOT], f'pointers into the test page method: {[hex(p) for p in ptr]}'
     assert img[DEV_METHOD - BASE - 4:DEV_METHOD - BASE + 2] == bytes.fromhex('006b 0009 4f22'), 'method boundary'
     assert img[DEV_END - BASE:DEV_END - BASE + 8] == bytes.fromhex('e004 006b e000 006b'), 'next methods'
+    ctor_loads = [a for vt in TEST_VTABLES for a, _ in const_loads_into_value(img, vt)]
     for n, lo, hi, slot, ret0 in EXTRA:
+        if slot is None:                                   # the helper block
+            hn, srcs, (s0, s1) = HELPER_BLOCK
+            br = branches_into(img, lo, hi)
+            assert n == hn and sorted(int(a, 16) for a, _ in br) == sorted(srcs), f'branches into {n}: {br}'
+            assert all(s0 <= a < s1 for a in srcs) and not [a for a in ctor_loads if s0 <= a < s1], f'{n} callers'
+            assert not branches_into(img, s0, s1), f'something branches into the callers of {n}'
+            sp = [BASE + i for i in range(0, len(img) - 3, 4) if s0 <= struct.unpack('>I', img[i:i + 4])[0] < s1]
+            assert all(TEST_VT_AREA[0] <= p < TEST_VT_AREA[1] for p in sp), f'pointers into the callers of {n}: {sp}'
+            assert not const_loads_into(img, lo, hi, [(lo, hi)]), f'constant loads into {n}'
+            assert not [i for i in range(0, len(img) - 3, 4) if lo <= struct.unpack('>I', img[i:i + 4])[0] < hi], f'pointers into {n}'
+            assert img[lo - BASE - 4:lo - BASE] == bytes.fromhex('0c0b f920') and img[lo - BASE:lo - BASE + 2] == bytes.fromhex('2f96'), f'{n} start'
+            continue
         assert not branches_into(img, lo, hi), f'something branches into {n}'
-        assert not const_loads_into(img, lo, hi, [(lo, hi)]), f'constant loads into {n}'
+        loads = const_loads_into(img, lo, hi, [(lo, hi)])
+        if n in POOL_SPANS:
+            s0, s1 = POOL_SPANS[n]
+            assert s1 == lo and all(s0 <= a < s1 for a, _ in loads), f'constant loads into {n} from outside its span'
+            assert not branches_into(img, s0, hi), f'something branches into the span of {n}'   # span + area
+            assert not [a for a in ctor_loads if s0 <= a < s1], f'a constructor in the span of {n}'
+            sp = [BASE + i for i in range(0, len(img) - 3, 4) if s0 <= struct.unpack('>I', img[i:i + 4])[0] < s1]
+            assert all(TEST_VT_AREA[0] <= p < TEST_VT_AREA[1] for p in sp), f'pointers into the span of {n}: {sp}'
+            assert img[hi - BASE:hi - BASE + 4] in (bytes(4), bytes.fromhex('e000 006b')) or hi + 4 == ret0, f'{n} end'
+        else:
+            assert not loads, f'constant loads into {n}'
+            assert img[hi - BASE - 2:hi - BASE] == bytes.fromhex('006b') or \
+                img[hi - BASE - 4:hi - BASE] == bytes.fromhex('006b 0009'), f'{n} end'
         ptr = [BASE + i for i in range(0, len(img) - 3, 4) if lo <= struct.unpack('>I', img[i:i + 4])[0] < hi]
         assert ptr == [slot] and u32(img, slot) == lo, f'pointers into {n}: {[hex(p) for p in ptr]}'
-        assert img[lo - BASE - 2:lo - BASE + 2] in (bytes.fromhex('0009 4f22'), bytes.fromhex('006b 4f22')), f'{n} start'
-        assert img[hi - BASE - 2:hi - BASE] == bytes.fromhex('006b'), f'{n} end'
+        assert img[lo - BASE:lo - BASE + 2] == bytes.fromhex('4f22') and (img[lo - BASE - 2:lo - BASE] in
+            (bytes.fromhex('0009'), bytes.fromhex('006b')) or lo - 2 in literal_pools(img)), f'{n} start'
         assert img[ret0 - BASE:ret0 - BASE + 4] == bytes.fromhex('e000 006b'), f'{n} return-0 method'
     assert img[TEST_GATE - BASE - 2:TEST_GATE - BASE + 6] == TEST_GATE_OLD, 'test-mode gate not found'
     assert [i for i in range(0, len(img) - 3, 4) if struct.unpack('>I', img[i:i + 4])[0] == 0x0C0BFC40] == \
         [0x0C0D1978 - BASE], 'test-mode first page is reachable from elsewhere'
-    for p, f in ((LOAD_PTR, LOAD_FN), (TICK_PTR, TICK_FN)):
+    # the MIDI note gate is called through two literals; only the MIDI receiver's one (loaded once) is swapped
+    assert u32(img, GATE_PTR) == GATE_FN and const_loads_into(img, GATE_PTR, GATE_PTR + 4, []) == [(GATE_LOAD, GATE_PTR)], \
+        'MIDI gate literal'
+    assert img[GATE_LOAD - BASE + 2:GATE_LOAD - BASE + 4] == bytes.fromhex('434b'), 'MIDI gate call (jsr/n @r3)'
+    # the note handlers' literal: loaded at exactly two sites, each called right after a "kind == 3" test
+    assert u32(img, GATE2_PTR) == GATE_FN and sorted(a for a, _ in const_loads_into(img, GATE2_PTR, GATE2_PTR + 4, [])) == \
+        sorted(GATE2_LOADS), 'note handler MIDI gate literal'
+    for a in GATE2_LOADS:
+        assert img[a - BASE + 2:a - BASE + 4] == bytes.fromhex('434b'), f'MIDI gate call at {a:#x}'
+    assert u32(img, HOLD_PTR) == 0x0C082B34 and const_loads_into(img, HOLD_PTR, HOLD_PTR + 4, []) == [(HOLD_LOAD, HOLD_PTR)] \
+        and img[HOLD_LOAD - BASE + 4:HOLD_LOAD - BASE + 8] == bytes.fromhex('430b e426'), 'HOLD GATE lookup literal'
+    for p, f, ld in ((XCOPY_PTR, XCOPY_FN, XCOPY_LOAD), (XEXCH_PTR, XEXCH_FN, XEXCH_LOAD)):
+        assert u32(img, p) == f and const_loads_into(img, p, p + 4, []) == [(ld, p)] and \
+            img[ld - BASE + 2:ld - BASE + 4] == bytes.fromhex('434b'), f'copy / exchange worker literal {p:#x}'
+        assert [i for i in range(0, len(img) - 3, 4) if struct.unpack('>I', img[i:i + 4])[0] == f] == [p - BASE], \
+            f'{f:#x} is referenced from more than {p:#x}'
+    # the play request is called through three literals; only the note handler's one (loaded once) is swapped
+    assert u32(img, REQ_PTR) == REQ_FN and const_loads_into(img, REQ_PTR, REQ_PTR + 4, []) == [(REQ_LOAD, REQ_PTR)], \
+        'play request literal'
+    for p, f in ((LOAD_PTR, LOAD_FN), (TICK_PTR, TICK_FN), (PLAY_PTR, PLAY_FN), (REL_PTR, REL_FN), (PEV_SLOT, PEV_FN),
+                 (NOTE_PTR, NOTE_FN), (PEN_SLOT, PEN_FN), (PREF_SLOT, PREF_FN)):
         assert [i for i in range(0, len(img) - 3, 4) if struct.unpack('>I', img[i:i + 4])[0] == f] == [p - BASE], \
             f'{f:#x} is referenced from more than {p:#x}'
     # every constant load from live code into the reclaimed area must be one we relocate
@@ -257,7 +380,7 @@ def build(official):
     put32(new, DEV_SLOT, DEV_METHOD, DEV_RET0)
     for n, lo, hi, slot, ret0 in EXTRA:
         new[lo - BASE:lo - BASE + len(extra[n])] = extra[n]
-        put32(new, slot, lo, ret0)
+        if slot is not None: put32(new, slot, lo, ret0)
     new[TEST_GATE - BASE:TEST_GATE - BASE + 2] = struct.pack('>H', TEST_GATE_NEW)
     assert img[LED_RANGE - BASE:LED_RANGE - BASE + 6] == LED_RANGE_OLD, 'TIME/BPM LED range check not found'
     new[LED_RANGE - BASE:LED_RANGE - BASE + 2] = struct.pack('>H', LED_RANGE_NEW)
@@ -269,17 +392,32 @@ def build(official):
     new[REFRESH_RANGE - BASE:REFRESH_RANGE - BASE + 2] = struct.pack('>H', REFRESH_NEW)
     put32(new, LOAD_PTR, LOAD_FN, load_stub)
     put32(new, TICK_PTR, TICK_FN, tick_stub)
+    put32(new, REQ_PTR, REQ_FN, syms['req_stub'])
+    put32(new, PLAY_PTR, PLAY_FN, syms['play_stub'])
+    put32(new, REL_PTR, REL_FN, syms['rel_stub'])
+    put32(new, PEV_SLOT, PEV_FN, syms['pev_stub'])
+    put32(new, NOTE_PTR, NOTE_FN, syms['note_stub'])
+    put32(new, GATE_PTR, GATE_FN, syms['gate_stub'])
+    put32(new, GATE2_PTR, GATE_FN, syms['gate2_stub'])
+    put32(new, HOLD_PTR, 0x0C082B34, syms['hold_stub'])
+    put32(new, XCOPY_PTR, XCOPY_FN, syms['xcopy_stub'])
+    put32(new, XEXCH_PTR, XEXCH_FN, syms['xexch_stub'])
+    assert img[LED_BLINK - BASE:LED_BLINK - BASE + 6] == LED_BLINK_OLD, 'TIME/BPM LED off path not found'
+    new[LED_BLINK - BASE:LED_BLINK - BASE + 2] = struct.pack('>H', LED_BLINK_NEW)
+    put32(new, PEN_SLOT, PEN_FN, syms['pen_stub'])
+    put32(new, PREF_SLOT, PREF_FN, syms['pref_stub'])
     for lit in DUMP_LITS:
         put32(new, lit, DUMP, dump_ok)
     put32(new, VT_SLOT, VT_OLD, ev_stub)
     for s in FILL_SLOTS_FWD: put32(new, s, FILL_FWD, fill_fwd)
     for s in FILL_SLOTS_REV: put32(new, s, FILL_REV, fill_rev)
-    # no pointer to the dump or fill routines left anywhere except our own stub literals
+    # no pointer to the dump or fill routines left anywhere except in our own code and stub literals
     for target in (DUMP, FILL_FWD, FILL_REV):
         left = [hex(BASE + i) for i in range(0, len(new) - 3, 4)
                 if struct.unpack('>I', new[i:i + 4])[0] == target and not any(
                     lo - BASE <= i < hi - BASE for lo, hi in ((CAVE, CAVE_END), (DUMP, DUMP_END), (OSFN, OSFN_END),
-                                                               (HELPER_CODE, HELPER_END)))]
+                                                               (HELPER_CODE, HELPER_END), (DEV, DEV_END),
+                                                               *((lo, lo + len(extra[n])) for n, lo, *_ in EXTRA)))]
         assert not left, f'{target:#x} still referenced at {left}'
     o = DISP - BASE
     assert new[o:o + 12] == DISP_OLD and not branches_into(img, DISP, DISP + 12)
@@ -292,14 +430,18 @@ def build(official):
             (OSFN, OSFN_END), (WSPFN, WSPFN_END), (DEV_METHOD, DEV_END)] + [(lo, hi) for _, lo, hi, _, _ in EXTRA]
     for lo, hi in ((DUMP, DUMP_END), (CAVE, CAVE_END), (DISP, DISP + 12), (OSFN, OSFN_END), (WSPFN, WSPFN_END),
                    (HELPER_CODE, HELPER_END), (DEV, DEV_END), *[(lo, hi) for _, lo, hi, _, _ in EXTRA]):
-        stray = const_loads_into(bytes(new), lo, hi, ours)
+        # a literal-pool word of the stock image stays data even when its only loader was in an area we reused
+        stray = [(a, t) for a, t in const_loads_into(bytes(new), lo, hi, ours) if a not in literal_pools(img)
+                 and not any(s0 <= a < s1 for s0, s1 in POOL_SPANS.values())]
         assert not stray, f'constant loads into {lo:#x}: {[(hex(a), hex(t)) for a, t in stray]}'
     left = [hex(BASE + i) for i in range(0, len(new) - 3, 4) if DEV_METHOD <= struct.unpack('>I', new[i:i + 4])[0] < DEV_END
             and not any(lo - BASE <= i < hi - BASE for lo, hi in ours)]
     assert not left, f'pointers into the reused test page method: {left}'
+    hooks = {REQ_PTR: syms['req_stub'], PLAY_PTR: syms['play_stub'], REL_PTR: syms['rel_stub'], PEV_SLOT: syms['pev_stub'], NOTE_PTR: syms['note_stub'], GATE_PTR: syms['gate_stub'], GATE2_PTR: syms['gate2_stub'], HOLD_PTR: syms['hold_stub'], XCOPY_PTR: syms['xcopy_stub'], XEXCH_PTR: syms['xexch_stub'], PEN_SLOT: syms['pen_stub'], PREF_SLOT: syms['pref_stub']}   # planned entries
     for n, lo, hi, slot, ret0 in EXTRA:
         left = [hex(BASE + i) for i in range(0, len(new) - 3, 4) if lo <= struct.unpack('>I', new[i:i + 4])[0] < hi
-                and not any(a - BASE <= i < b - BASE for a, b in ours)]
+                and not any(a - BASE <= i < b - BASE for a, b in ours)
+                and hooks.get(BASE + i) != struct.unpack('>I', new[i:i + 4])[0]]
         assert not left, f'pointers into {n}: {left}'
     for site, _, new_op, old_lit, new_lit in LIT_MOVES:
         assert new[new_lit - BASE:new_lit - BASE + 4] == img[old_lit - BASE:old_lit - BASE + 4]
@@ -316,9 +458,9 @@ def build(official):
                {m[4] - BASE + k for m in LIT_MOVES for k in range(4)} | {m[0] - BASE + k for m in LIT_MOVES for k in range(2)} |
                set(range(OSFN - BASE, OSFN - BASE + len(persist))) | set(range(WSPFN - BASE, WSPFN - BASE + len(wsp))) |
                set(range(HELPER_CODE - BASE, HELPER_CODE - BASE + len(helper))) |
-               {a - BASE + k for a in (LOAD_PTR, TICK_PTR, DEV_SLOT) for k in range(4)} |
+               {a - BASE + k for a in (LOAD_PTR, TICK_PTR, DEV_SLOT, REQ_PTR, PLAY_PTR, REL_PTR, PEV_SLOT, NOTE_PTR, GATE_PTR, GATE2_PTR, HOLD_PTR, XCOPY_PTR, XEXCH_PTR, PEN_SLOT, PREF_SLOT) for k in range(4)} |
                set(range(DEV - BASE, DEV - BASE + len(dev))) |
-               {x - BASE for n, lo, hi, slot, ret0 in EXTRA for x in (*range(lo, lo + len(extra[n])), *range(slot, slot + 4))} | {TEST_GATE - BASE, TEST_GATE - BASE + 1, LED_RANGE - BASE + 1, REFRESH_RANGE - BASE + 1} |
+               {x - BASE for n, lo, hi, slot, ret0 in EXTRA for x in (*range(lo, lo + len(extra[n])), *(range(slot, slot + 4) if slot else ()))} | {TEST_GATE - BASE, TEST_GATE - BASE + 1, LED_RANGE - BASE + 1, REFRESH_RANGE - BASE + 1, LED_BLINK - BASE + 1} |
                {a - BASE + 1 for a, _, _ in VERSION_TEXT})
     assert set(diff) <= allowed, [hex(BASE + d) for d in diff if d not in allowed]
     info = dict(extra={n: len(b) for n, b in extra.items()}, dev=len(dev), cave=len(cave), dump=len(dump), diff=len(diff), rewritten=rewritten, seen=sorted(seen),

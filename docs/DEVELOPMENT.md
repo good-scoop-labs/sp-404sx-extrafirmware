@@ -11,18 +11,23 @@ SP-404SX's own updater copies it to flash. EXTRAfirmware adds code to that image
 | `0x0C080400`–`0x0C0807FF` | Free 1 KB above vector 255: entry stubs, TIME/BPM page UI, RAM (per-pad speeds, per-voice resampler state) |
 | `0x0C089EF4`–`0x0C08A35F` | Roland's hidden PAD_INFO debug dump (reclaimed): resampler and fill wrapper |
 | `0x0C0EB5A0`, `0x0C0A9558` | Two unreferenced Roland routines: persistence code; ratio table and file path |
-| Factory test pages | Test mode disabled at boot; methods of CPageTestDevice / Midi / LED reused for code |
+| Factory test pages | Test mode disabled at boot; methods of CPageTestDevice / Midi / LED reused for varispeed, methods of most other test pages (and the helper block after the CPageTestSw constructor) for chromatic mode; each slot pointed at its page's `return 0` method |
 | CPageSmplEdit (TIME/BPM page) | Event and display hooks; light and refresh mode ranges include the CTRL 3 view |
 | 10 CSmplCharge vtables | `fill()` wrapped: asks Roland's fill for `ratio ×` the frames and resamples them (linear interpolation) |
-| Version text (`0x0C0F1142`, `0x0C0F116C`) | Version screen shows `2.00` |
-| PAD_INFO load / 100 ms auto-save | Load and save `VARISPD.BIN` alongside Roland's pad settings |
+| Version text (`0x0C0F1142`, `0x0C0F115A`, `0x0C0F116C`) | Version screen shows `2.10` |
+| PAD_INFO load / 100 ms auto-save | Load and save `VARISPD.BIN` and `CHROMA.BIN` alongside Roland's pad settings |
+| Pad copy / exchange worker literals | Varispeed moves with the sample when Roland's copy / exchange succeeds |
+| Play request literal, pad start / release pointers | Chromatic mode: keys (and empty pads) play the source pad at the key's pitch |
+| CPagePlay event / enter / refresh slots | Chromatic mode: SHIFT + TIME/BPM gesture, `C.ON` on the play page |
+| Note handler literal, MIDI gate literals | Chromatic MIDI channels; MIDI notes play and start resampling at `RDY` / `REC` |
+| HOLD's GATE lookup literal | HOLD latches every key of a chromatic bank |
+| TIME/BPM LED (`0x0C0CBF12`) | TIME/BPM blinks in the chromatic menu |
 
 `src/tools/build.py` documents every patch site; `docs/DEV_NOTES.md` has the reverse-engineering log.
 
 ## Layout
 
 ```
-CLAUDE.md                     working rules and context for AI assistants (read first)
 Dockerfile                    Linux build environment (SH cross compiler, Python, Node)
 patch.py                      user patcher (Python, no packages)
 docs/index.html               web patcher (GitHub Pages)
@@ -57,7 +62,8 @@ python3 src/tools/build.py official/sp404sx_up.bin -o out/sp404sx_up.bin
 ```
 
 The code is compiled for SH-4 without FPU (`-m4-nofpu -mb -Os`), and every generated instruction is checked
-against an SH-2A allow-list. Release v2.00 was built with GCC 13.3.0 (Ubuntu 13.3.0-6ubuntu2~24.04); another
+against an SH-2A allow-list. Release v2.00 was built with GCC 13.3.0 (Ubuntu 13.3.0-6ubuntu2~24.04), v2.10 with GCC 13.3.0 /
+binutils 2.42 built from source on macOS (it rebuilds v2.00 byte-identical); another
 compiler version can produce a different (but equally valid) file, so the release is defined by the patch
 data and its SHA-256, not by rebuilding.
 
@@ -80,7 +86,7 @@ python3 patch.py official/sp404sx_up.bin -o /tmp/p/sp404sx_up.bin && cmp /tmp/p/
 ```
 
 The host tests compile `vari.c` for the PC with Roland's functions replaced by mocks:
-`test_resampler` (bit-exact against a reference), `test_stress` (randomized, sanitizers), `test_persist`
+`test_resampler` (bit-exact against a reference), `test_stress` (randomized, sanitizers), `test_chroma` (chromatic mode), `test_persist`
 (`VARISPD.BIN` cases), `test_ui` (TIME/BPM page logic).
 
 ## Releasing
@@ -92,7 +98,7 @@ The host tests compile `vari.c` for the PC with Roland's functions replaced by m
 4. Run the three checks above (and `node src/tools/check_web_page.js official/sp404sx_up.bin` if Playwright
    is installed).
 5. Update `CHANGELOG.md`, the SHA-256 in `README.md` and `docs/INSTALL.md`, and `docs/STATUS.md`.
-6. Commit and tag (`git tag -a v2.00`).
+6. Commit and tag (`git tag -a v2.10`).
 
 Never commit `sp404sx_up.bin` files (stock or built): they are Roland's code. `.gitignore` excludes them.
 

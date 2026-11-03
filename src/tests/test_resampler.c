@@ -1,5 +1,5 @@
 /* Host test: the varispeed resampler (vari_fill) against a whole-stream reference, bit-exact,
-   over random block sizes, speeds and PTN ratios (0.25x .. 4x). */
+   over random block sizes, speeds, PTN ratios (0.25x .. 4x) and chromatic notes (1/8x .. just under 8x). */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -37,7 +37,9 @@ static void lk(int n){} static int cr(const char*p){return -1;} static int op(co
 #define R_WRITE wr
 #define R_CLOSE cl
 #define R_CARDOK cardok
+#include "mock_chr.h"
 #include "vari.c"
+static unsigned mock_ratio_now(int pad) { return chr_ratio(pad, pad_ratio(pad)); }
 #include "ratio.c"
 static int evo(struct page *p, struct event *e){ evcalls++; return 0; }
 /* fake Roland feeder object */
@@ -61,15 +63,18 @@ static int ref(s16 *outL,s16 *outR,int maxout,u32 r,int *validout){
 }
 int main(){
   srand(12345); int fails=0, cases=0;
-  int positions[]={-64,-50,-20,-3,-2,1,2,10,40,60,61,61,61,63,61,61,61,61,61};
-  int pats[]={0,0,0,0,0,0,0,0,0,0,900,1800,1200,450,300,360,3000,4700,9000};
-  for(int pi=0;pi<19;pi++) for(int trial=0;trial<40;trial++){
+  int positions[]={-64,-50,-20,-3,-2,1,2,10,40,60,61,61,61,63,61,61,61,61,61,  0,0,0,0,60,-61,0,61};
+  int pats[]={0,0,0,0,0,0,0,0,0,0,900,1800,1200,450,300,360,3000,4700,9000,      0,0,0,0,0,0,0,4700};
+  /* chromatic keys (semitones; 99 = none): 4x .. just under 8x, and 1/8x with varispeed -12 */
+  int keys[]={99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,  24,25,30,35,35,-24,-60,20};
+  for(int pi=0;pi<27;pi++) for(int trial=0;trial<40;trial++){
     srcN = 500 + rand()%20000;
     srcL=malloc(srcN*2); srcR=malloc(srcN*2);
     for(int i=0;i<srcN;i++){srcL[i]=(s16)(rand()-RAND_MAX/2); srcR[i]=(s16)(rand()-RAND_MAX/2);}
     struct obj o; memset(&o,0,sizeof o); o.voice=3; o.pad=7; memset(vari_vs,0,sizeof vari_vs);
     vari_tab.e[7].pos=positions[pi]; prm[42]=1200; prm[43]=0; patt=pats[pi]?pats[pi]:1200;
-    u32 r=pad_ratio(7);
+    chr_tab.b[0].src = keys[pi]==99 ? 0 : 8; chr_st.cur[0] = keys[pi]==99 ? 0 : (unsigned char)(keys[pi]+S0);   /* pad 7 = bank A source */
+    u32 r=chr_ratio(7, pad_ratio(7));
     int total=0, maxout=srcN*3+50; s16 *gotL=calloc(maxout+8192,2), *gotR=calloc(maxout+8192,2);
     int endedat=-1, flag=0;
     while(total<maxout){
