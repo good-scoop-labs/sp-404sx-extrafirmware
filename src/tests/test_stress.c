@@ -37,7 +37,9 @@ static void lk(int n){} static int cr(const char*p){return -1;} static int op(co
 #define R_WRITE wr
 #define R_CLOSE cl
 #define R_CARDOK cardok
+#include "mock_chr.h"
 #include "vari.c"
+static unsigned mock_ratio_now(int pad) { return chr_ratio(pad, pad_ratio(pad)); }
 #include "ratio.c"
 static int evo(struct page *p, struct event *e){ evcalls++; return 0; }
 struct obj { char pad0[16]; int cursor; char pad1[4]; int voice; int pad; char rest[64]; };
@@ -57,11 +59,14 @@ int main(){
     if(rand()%50==0) vari_tab.e[11].pos=(s8)(rand()%2? rand()%128-64 : (rand()%2? 61+rand()%3 : rand()%256-128));
     if(rand()%40==0){ int w[]={0,-5,1,400,1200,2000,3000,40000,0x7FFF,0x8000,0x7FFFFFFF,300,4790,100};
       patt=w[rand()%14]; prm[42]=w[rand()%14]; prm[44]=w[rand()%11]; prm[43]=rand()%4; prm[40]=rand()%3; }
+    if(rand()%60==0){ chr_tab.b[0].src = rand()%3 ? 12 : rand()%256; chr_st.cur[0] = rand()%2 ? 4+rand()%96 : rand()%256; }
+                                                       /* chromatic: pad 11 = bank A source or not, any pitch or byte */
     if(rand()%300==0) o.cursor=rand()%srcN;           /* retrigger / loop jump */
     int F=(rand()%4==0)?1+rand()%6:1+rand()%4096;
     s16 *L=malloc(F*2),*R=malloc(F*2);                 /* exact-size buffers: ASan catches overruns */
     int fr=F; int rv=vari_fill(&o,L,R,&flag,&fr,ofill);
     { u32 rr=pad_ratio(11); if(rr<0x4000||rr>0x3FFFF){printf("ratio out of range %x\n",rr);return 1;} }
+    { u32 rr=chr_ratio(11,pad_ratio(11)); if(rr==0||rr>V_MAX){printf("chromatic ratio out of range %x\n",rr);return 1;} }
     if(fr<0||fr>F){printf("bad frames %d\n",fr);return 1;}
     outs+=F; free(L);free(R);
     if(rv==0) o.cursor=rand()%srcN;

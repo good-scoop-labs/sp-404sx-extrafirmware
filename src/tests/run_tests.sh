@@ -9,8 +9,8 @@ mkdir -p "$OUT"
 (cd "$FW" && python3 gen_ratio.py)
 CC=${CC:-gcc}
 SAN="-fsanitize=address,undefined -fno-sanitize-recover=all"
-for t in test_ui test_resampler test_persist; do
-  $CC -O1 -w $SAN -I"$FW" -o "$OUT/$t" $t.c
+for t in test_ui test_resampler test_persist test_chroma; do
+  $CC -O1 -w $SAN -I"$FW" -o "$OUT/$t" $t.c -lm
   printf '%-16s ' "$t"
   "$OUT/$t" > "$OUT/$t.log" || { cat "$OUT/$t.log"; echo "FAILED: $t"; exit 1; }
   tail -1 "$OUT/$t.log"

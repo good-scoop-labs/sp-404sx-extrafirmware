@@ -10,6 +10,11 @@ Custom firmware for the Roland SP-404SX / SP-404A (identical firmware) built on 
 varispeed on CTRL 3 of the TIME/BPM page, PTN (follow pattern tempo), BPM displays, `VARISPD.BIN`
 persistence, version screen `2.00`. CPU: SH-2A big-endian; image loaded at `0x0C080000`.
 
+**v2.10 in progress** (branch `chromatic-sample-playback`, version screen `2.10`): per-bank chromatic mode
+(SHIFT + TIME/BPM menu, MIDI channel per bank, octave, `CHROMA.BIN`), MIDI during resampling, varispeed moved
+explicitly on copy / exchange. Tested on hardware with test builds up to v2.10c; see `docs/STATUS.md` and the
+end of `docs/DEV_NOTES.md`. Not released yet (patch data, web page, README/INSTALL still v2.00).
+
 ## Ground rules
 
 - **Never commit or publish `sp404sx_up.bin` files** (stock or built) or disassembly listings of Roland code.
@@ -24,7 +29,7 @@ persistence, version screen `2.00`. CPU: SH-2A big-endian; image loaded at `0x0C
   checks. A past bug (internal build 4) came from a Roland routine loading constants from a reclaimed area.
 - **Roland's ABI keeps MACH/MACL across calls**; entry stubs from Roland code must save them (see `stubs.S`).
 - Calls from the audio path (`vari_fill`) must only use lock-free Roland getters; card I/O happens only in
-  `vari_tick` (Roland's auto-save loop, gated like Roland's own PAD_INFO save, lock 14).
+  `vari_tick` / `chr_tick` (Roland's auto-save loop, gated like Roland's own PAD_INFO save, lock 14).
 - Space is tight: every region is nearly full (`build.py` prints usage). Check `docs/DEV_NOTES.md` for which
   factory test page methods are already reused and which candidates remain.
 

@@ -84,7 +84,7 @@ dump_ok:
 
         .balign 4
 .Lc_disp:        .long vari_display
-.Lc_ev:          .long vari_event
+.Lc_ev:          .long vari_ev
 .Lc_fill:        .long vari_fill
 .Ldisp_back:     .long 0x0C0CB5E0
 .Lev_orig:       .long 0x0C0CC078
@@ -131,6 +131,121 @@ tick_stub:
 .Lload_orig:    .long 0x0C08A68C
 .Lneed_load:    .long vari_need_load
 .Ltick_orig:    .long 0x0C08A700
-.Lc_tick:       .long vari_tick
+.Lc_tick:       .long chr_tick
         .global load_stub, tick_stub, persist_lits_end
 persist_lits_end:
+
+/* ---- chromatic mode hooks (placed in reclaimed factory test page methods). Arguments pass through unchanged:
+   play request (req, kind, pad, vel), pad start (kind, pad, vel), pad release (pad). */
+        .section .text.chrstubs,"ax"
+        .balign 2
+req_stub:
+        mov.l   .Lc_req,r0
+        bra     5f
+        nop
+play_stub:
+        mov.l   .Lc_play,r0
+        bra     5f
+        nop
+rel_stub:
+        mov.l   .Lc_rel,r0
+5:      sts.l   pr,@-r15
+        sts.l   mach,@-r15
+        sts.l   macl,@-r15
+        jsr     @r0
+        nop
+        lds.l   @r15+,macl
+        lds.l   @r15+,mach
+        lds.l   @r15+,pr
+        rts
+        nop
+        .balign 4
+chr_lits:
+.Lc_req:        .long chr_request
+.Lc_play:       .long chr_play
+.Lc_rel:        .long chr_release
+chr_lits_end:
+
+/* ---- page and note hooks: Roland's original function is passed as the next argument: play page event (page,
+   event, handler), play page enter / refresh (page, method), MIDI note handler (event, handler), MIDI receive
+   gate (event, gate). */
+        .section .text.chrstubs2,"ax"
+        .balign 2
+pev_stub:                        /* play page event */
+        mov.l   .Lpev_orig,r6
+        mov.l   .Lc_pev,r0
+        bra     6f
+        nop
+note_stub:                       /* note handler (event) */
+        mov.l   .Lnote_orig,r5
+        mov.l   .Lc_note,r0
+        bra     6f
+        nop
+gate_stub:                       /* MIDI receive gate (no arguments; the event is in Roland's r8) */
+        mov     r8,r4
+        mov.l   .Lgate_orig,r5
+        mov.l   .Lc_gate,r0
+        bra     6f
+        nop
+gate2_stub:                      /* note handlers' MIDI gate (no arguments) */
+        mov.l   .Lgate_orig,r4
+        mov.l   .Lc_gate2,r0
+        bra     6f
+        nop
+hold_stub:                       /* HOLD's GATE lookup: R_GET(id, pad) */
+        mov.l   .Lhold_orig,r6
+        mov.l   .Lc_hold,r0
+        bra     6f
+        nop
+pen_stub:                        /* play page enter: Roland's enter, then C.ON due */
+        mov.l   .Lpen_orig,r5
+        mov.l   .Lc_pen,r0
+        bra     6f
+        nop
+xcopy_stub:                      /* pad copy worker (no arguments; pads in params 60 / 61) */
+        mov.l   .Lxcopy_orig,r4
+        mov     #0,r5
+        mov.l   .Lc_xop,r0
+        bra     6f
+        nop
+xexch_stub:                      /* pad exchange worker (no arguments; pads in params 60 / 61) */
+        mov.l   .Lxexch_orig,r4
+        mov     #1,r5
+        mov.l   .Lc_xop,r0
+        bra     6f
+        nop
+pref_stub:                       /* play page refresh: Roland's refresh, then C.ON if due */
+        mov.l   .Lpref_orig,r5
+        mov.l   .Lc_pref,r0
+6:      sts.l   pr,@-r15
+        sts.l   mach,@-r15
+        sts.l   macl,@-r15
+        jsr     @r0
+        nop
+        lds.l   @r15+,macl
+        lds.l   @r15+,mach
+        lds.l   @r15+,pr
+        rts
+        nop
+        .balign 4
+chr_lits2:
+.Lc_pev:        .long chr_page_event
+.Lpev_orig:     .long 0x0C0C5384
+.Lc_note:       .long chr_note
+.Lnote_orig:    .long 0x0C089330
+.Lc_gate:       .long chr_gate
+.Lgate_orig:    .long 0x0C08FD70
+.Lc_gate2:      .long chr_gate2
+.Lc_hold:       .long chr_holdget
+.Lhold_orig:    .long 0x0C082B34
+.Lc_pen:        .long chr_page_enter
+.Lpen_orig:     .long 0x0C0C5250
+.Lc_pref:       .long chr_page_refresh
+.Lpref_orig:    .long 0x0C0C53F4
+.Lc_xop:        .long vari_xop
+.Lxcopy_orig:   .long 0x0C087A64
+.Lxexch_orig:   .long 0x0C087DEC
+chr_lits2_end:
+        .global req_stub, play_stub, rel_stub, pev_stub, note_stub, gate_stub, gate2_stub, hold_stub, pen_stub, pref_stub
+        .global xcopy_stub, xexch_stub
+        .global chr_lits, chr_lits_end, chr_lits2, chr_lits2_end

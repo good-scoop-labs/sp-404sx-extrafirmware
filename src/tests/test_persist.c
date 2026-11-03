@@ -5,7 +5,7 @@
 #include <stdlib.h>
 static unsigned char padinfo[120*32];
 static unsigned char card[1024]; static int card_len=-1, writes=0, locks=0;
-static int g(int id,int pad){ return id==52?7:0; } static int pt(void){return 12000;}
+static int p60=-1,p61=-1; static int g(int id,int pad){ return id==52?7:id==60?p60:id==61?p61:0; } static int pt(void){return 12000;}
 static int dv(int a,int b){return a/b;}
 static void sn(int n){} static void ss(const char*s,int f){}
 static void lk(int n){ locks++; } static void ulk(int n){ locks--; }
@@ -40,10 +40,19 @@ static short knobs[3];
 #define CAVE
 #define PERSIST
 #define section(x) unused
+#include "mock_chr.h"
 #include "vari.c"
+static unsigned mock_ratio_now(int pad) { return chr_ratio(pad, pad_ratio(pad)); }
 #include "ratio.c"
 static void setpad(int p,unsigned len,int ch){ memset(padinfo+p*32,0,32); *(unsigned*)(padinfo+p*32+4)=len; padinfo[p*32+22]=ch; padinfo[p*32+21]=1; }
 static void ticks(int n){ for(int i=0;i<n;i++) vari_tick(1,100); }
+/* Roland's copy / exchange worker: pads in params 60 / 61; a resync runs in the middle, as on hardware */
+static int job_fail, job_mid;
+static int job(void){ int a=p60,b=p61; unsigned char t2[32];
+  if(job_fail||(unsigned)a>=120||(unsigned)b>=120) return 1;
+  if(job_mid==1){ memcpy(t2,padinfo+a*32,32); memcpy(padinfo+a*32,padinfo+b*32,32); memcpy(padinfo+b*32,t2,32); }
+  else memcpy(padinfo+b*32,padinfo+a*32,32);
+  ticks(1); return 0; }
 static int fails=0;
 #define CHECK(c,msg) do{ if(!(c)){printf("FAIL: %s\n",msg); fails++;} else printf("ok:   %s\n",msg);}while(0)
 int main(){ vari_need_load=1;
@@ -96,6 +105,27 @@ int main(){ vari_need_load=1;
   /* short file */
   card_len=100; vari_need_load=1; ticks(1); CHECK(vari_tab.e[6].pos==0, "short file: start fresh");
   CHECK(locks==0, "lock/unlock balanced");
+  /* Roland's copy / exchange workers (vari_xop), with identical samples the fingerprints can't tell apart */
+  {
+    setpad(10,300000,2); setpad(11,0,0); setpad(12,0,0); ticks(1);
+    vari_tab.e[10].pos=-24; vari_dirty_ms=1;
+    p60=10; p61=11; job_mid=0; CHECK(vari_xop(job,0)==0 && vari_tab.e[11].pos==-24, "copy job: destination gets the source speed");
+    vari_tab.e[11].pos=12;                                   /* now two identical samples at different speeds */
+    p60=10; p61=11; job_mid=1; vari_xop(job,1); ticks(1);
+    CHECK(vari_tab.e[10].pos==12 && vari_tab.e[11].pos==-24, "exchange job, identical samples: speeds swap");
+    vari_xop(job,1); ticks(1);
+    CHECK(vari_tab.e[10].pos==-24 && vari_tab.e[11].pos==12, "exchange job back: speeds swap back");
+    p60=11; p61=10; job_mid=0; vari_xop(job,0); ticks(1);
+    CHECK(vari_tab.e[10].pos==12 && vari_tab.e[11].pos==12, "copy job over an identical sample: source speed");
+    setpad(12,300000,2); ticks(1); vari_tab.e[12].pos=30;
+    p60=12; p61=10; job_mid=1; vari_xop(job,1); ticks(1);   /* different speed, resync would match pad 11 */
+    CHECK(vari_tab.e[10].pos==30 && vari_tab.e[12].pos==12, "exchange job with a third identical pad around");
+    vari_tab.e[10].pos=5; job_fail=1; p60=10; p61=12; vari_xop(job,0); ticks(1);
+    CHECK(vari_tab.e[12].pos==12 && vari_tab.e[10].pos==5, "failed job: nothing moves");
+    job_fail=0; p60=10; p61=10; vari_xop(job,0); CHECK(vari_tab.e[10].pos==5, "same pad: nothing moves");
+    p60=-1; vari_xop(job,0); CHECK(vari_tab.e[10].pos==5, "bad params: nothing moves");
+    int w0=writes; ticks(15); CHECK(writes>w0, "job result saved");
+  }
   /* any stored byte is a safe ratio index */
   for(int v=-128;v<128;v++){ vari_tab.e[0].pos=(s8)v; u32 r=pad_ratio(0); if(r<0x8000||r>0x18000){fails++;printf("bad ratio %d\n",v);} }
   printf(fails?"%d FAILURES\n":"all ok\n",fails); return fails;
