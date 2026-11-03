@@ -25,8 +25,8 @@ python3 patch.py path/to/sp404sx_up.bin
 It prints
 
 ```
-SP-404SX/A EXTRAfirmware v2.00 written to out/sp404sx_up.bin
-SHA-256 3093b7e677e285e4dd1f612d9f9ccc0df6e364998bc79f1ec52df0b9c11a7ffd
+SP-404SX/A EXTRAfirmware v2.10 written to out/sp404sx_up.bin
+SHA-256 733885e5935d0c2c4c887f0446afa8e2546d2520223cec7ccbe9297c08066b54
 ```
 
 Either way the file you get is named `sp404sx_up.bin` and has that SHA-256. The SP-404SX/A only installs
@@ -44,17 +44,18 @@ a file with exactly that name.
 
 ## 3. Check it
 
-Power off, then hold **MARK** while powering on: the display shows the version, **`2.00`**
+Power off, then hold **MARK** while powering on: the display shows the version, **`2.10`**
 (Roland's firmware shows `1.07`). You can also select a pad, press **TIME/BPM** and turn **CTRL 3**: the
 display shows a BPM that changes as you turn it.
 
-The first time you save a speed, the firmware creates `/ROLAND/SP-404SX/SMPL/VARISPD.BIN` on the card.
+The first time you save a speed, the firmware creates `/ROLAND/SP-404SX/SMPL/VARISPD.BIN` on the card;
+the first time you use chromatic mode, `/ROLAND/SP-404SX/SMPL/CHROMA.BIN`.
 
 ## Going back to stock
 
 Install Roland's original `sp404sx_up.bin` (straight from Roland's zip) the same way. Your samples and
-patterns are not affected. `VARISPD.BIN` stays on the card; the stock firmware ignores it, and it is used
-again if you reinstall EXTRAfirmware.
+patterns are not affected. `VARISPD.BIN` and `CHROMA.BIN` stay on the card; the stock firmware ignores
+them, and they are used again if you reinstall EXTRAfirmware.
 
 ## SP-404A
 

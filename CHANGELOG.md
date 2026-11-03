@@ -1,8 +1,9 @@
 # Changelog
 
-## v2.10 (in testing, not released yet)
+## v2.10
 
-Version screen shows `2.10`.
+The version screen shows `2.10`. Output `sp404sx_up.bin` SHA-256
+`733885e5935d0c2c4c887f0446afa8e2546d2520223cec7ccbe9297c08066b54`.
 
 - **Chromatic mode per bank:** SHIFT + TIME/BPM opens a chromatic menu for the last pad played (TIME/BPM
   blinks) and makes its bank a keyboard for it: pad 1 = own pitch, + 1 semitone per pad. CTRL 1 MIDI channel

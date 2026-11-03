@@ -43,7 +43,7 @@ pitch, then varispeed speeds the result up or down like tape.
 - **CTRL 2** shows the original BPM × the pad's speed.
 - **Moving CTRL 2 resets varispeed** to normal, just as Roland's CTRL 2 resets Time Modify.
 
-## Chromatic mode (in testing, not in v2.00)
+## Chromatic mode
 
 Chromatic mode turns a bank into a keyboard for one of its samples. Pitch and speed change together, like
 varispeed, so higher notes are also shorter. Any number of banks can be chromatic at once, each with its own

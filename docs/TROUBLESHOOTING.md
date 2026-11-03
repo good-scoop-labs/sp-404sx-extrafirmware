@@ -41,9 +41,19 @@ length, and PTN follows that BPM. See the [user guide](USER_GUIDE.md#ptn-follow-
 **Speeds are not restored after power-off.** Wait a second after the last change before powering off, and
 make sure the card isn't write-protected or full.
 
+**A MIDI channel isn't offered in the chromatic menu.** CTRL 1 skips channels already in use: the
+SP-404SX/A's own MIDI channel and the next one (it uses that for banks F–J), and channels of other
+chromatic banks.
+
+**A bank stopped being chromatic.** A bank turns off when its source pad's sample is deleted, replaced,
+recorded over, or swapped away by copy / exchange. Play the pad you want and press SHIFT + TIME/BPM again.
+
+**Chromatic notes play at the wrong octave from MIDI.** The octave setting (CTRL 3 in the menu) applies to
+the pads only; over MIDI, note 60 (middle C) is always the sample's own pitch.
+
 **Dropouts with several fast pads.** Very high speeds read samples faster. Please open an issue with what
 was playing.
 
 ## Reporting a problem
 
-Open an issue with: SP-404SX or SP-404A, release (v2.00, shown at power-on with MARK held), what you did, what you expected and what happened.
+Open an issue with: SP-404SX or SP-404A, release (v2.10, shown at power-on with MARK held), what you did, what you expected and what happened.

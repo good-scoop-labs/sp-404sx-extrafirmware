@@ -542,3 +542,10 @@ Implementation (vari.c "chromatic mode"):
   other task) may see the half-done PAD_INFO. Chromatic banks are unchanged (a bank whose source sample changes
   still turns off).
 - Space: vari_xop 172 B + vari_xset 48 B in chrw; chr_check moved from chrw to chry. Stubs in chrstubs2 (shared tail).
+
+## Release v2.10 (= test build v2.10c, SHA-256 733885e5935d0c2c4c887f0446afa8e2546d2520223cec7ccbe9297c08066b54)
+- Built with GCC 13.3.0 / binutils 2.42 built from source on macOS; byte-identical to the v2.10c file tested on
+  hardware. Patch data regenerated (RELEASE = '2.10': 246 runs, 6784 bytes).
+- Checks: host tests; patch.py output identical to the build; the web patcher's code (patcher-core.js + patch
+  data) run in JavaScriptCore (no Node on this machine; same checks as check_web_patch.js): official file
+  accepted, result byte-identical with the release hash, patched file recognised, modified input refused.

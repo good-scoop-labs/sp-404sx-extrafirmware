@@ -28,7 +28,6 @@ SP-404SX's own updater copies it to flash. EXTRAfirmware adds code to that image
 ## Layout
 
 ```
-CLAUDE.md                     working rules and context for AI assistants (read first)
 Dockerfile                    Linux build environment (SH cross compiler, Python, Node)
 patch.py                      user patcher (Python, no packages)
 docs/index.html               web patcher (GitHub Pages)
@@ -63,7 +62,8 @@ python3 src/tools/build.py official/sp404sx_up.bin -o out/sp404sx_up.bin
 ```
 
 The code is compiled for SH-4 without FPU (`-m4-nofpu -mb -Os`), and every generated instruction is checked
-against an SH-2A allow-list. Release v2.00 was built with GCC 13.3.0 (Ubuntu 13.3.0-6ubuntu2~24.04); another
+against an SH-2A allow-list. Release v2.00 was built with GCC 13.3.0 (Ubuntu 13.3.0-6ubuntu2~24.04), v2.10 with GCC 13.3.0 /
+binutils 2.42 built from source on macOS (it rebuilds v2.00 byte-identical); another
 compiler version can produce a different (but equally valid) file, so the release is defined by the patch
 data and its SHA-256, not by rebuilding.
 
@@ -98,7 +98,7 @@ The host tests compile `vari.c` for the PC with Roland's functions replaced by m
 4. Run the three checks above (and `node src/tools/check_web_page.js official/sp404sx_up.bin` if Playwright
    is installed).
 5. Update `CHANGELOG.md`, the SHA-256 in `README.md` and `docs/INSTALL.md`, and `docs/STATUS.md`.
-6. Commit and tag (`git tag -a v2.00`).
+6. Commit and tag (`git tag -a v2.10`).
 
 Never commit `sp404sx_up.bin` files (stock or built): they are Roland's code. `.gitignore` excludes them.
 

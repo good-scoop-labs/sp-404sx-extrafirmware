@@ -1,9 +1,9 @@
 # Status
 
-What has been confirmed on hardware, and what hasn't yet. Release v2.00 = internal build 13 plus the `2.00`
-version screen. The SP-404SX and SP-404A run the same firmware, so this applies to both.
+What has been confirmed on hardware, and what hasn't yet. Release v2.10 = test build v2.10c (byte-identical).
+Release v2.00 = internal build 13 plus the `2.00` version screen. The SP-404SX and SP-404A run the same firmware, so this applies to both.
 
-## v2.10 (in testing, not released yet)
+## v2.10
 
 Confirmed on hardware (test builds E1 … v2.10c):
 - Chromatic mode: SHIFT + TIME/BPM opens the menu (TIME/BPM blinks) and makes the last pad's bank a keyboard;
