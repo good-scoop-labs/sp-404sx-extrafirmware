@@ -56,4 +56,4 @@ was playing.
 
 ## Reporting a problem
 
-Open an issue with: SP-404SX or SP-404A, release (v2.10, shown at power-on with MARK held), what you did, what you expected and what happened.
+Open an issue with: SP-404SX or SP-404A, release (v2.11, shown at power-on with MARK held), what you did, what you expected and what happened.

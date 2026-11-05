@@ -574,3 +574,11 @@ Implementation (vari.c "chromatic mode"):
   to the source). chr_off (chrx, 28 B, tail call) releases the source (R_RELPAD) when CTRL 1 goes to OFF; CANCEL
   now goes through chr_knob(0, 0) too.
 - Space: chrz 272 of 288 B, chrw 964 of 980 B, chrh 100 of 100 B (chr_playmask), chrx 464 of 464 B.
+
+## Release v2.11 (fixes only, SHA-256 a66d915701e90430fad1263ec63f8f1f7e5e0e441c9a5465d3139e5f877a52f4)
+- The last fix test build (MD5 0c058823deea623db4c801ad072fee92, tested on hardware) plus the version screen:
+  ones digit `add #41` -> `add #42` at 0x0C0F1142 ("2.11"). Built with GCC 13.3.0 / binutils 2.42 built from
+  source on macOS. Patch data regenerated (RELEASE = '2.11': 260 runs, 7013 bytes).
+- Checks: host tests; patch.py output identical to the build; the web patcher's code (patcher-core.js + patch
+  data) run in JavaScriptCore (no Node on this machine; same checks as check_web_patch.js): official file
+  accepted, result byte-identical with the release hash, patched file recognised, modified input refused.

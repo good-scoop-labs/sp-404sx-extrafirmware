@@ -6,8 +6,8 @@ way. It adds tape-style **varispeed** to every pad (pitch and tempo change toget
 slowing down a tape or a turntable) and a **chromatic mode** that turns a bank into a keyboard for one of its
 samples, playable from the pads and over MIDI.
 
-> **Current release: v2.10** (the version screen shows `2.10`), based on Roland's system 1.07.
-> Output file: `sp404sx_up.bin`, SHA-256 `733885e5935d0c2c4c887f0446afa8e2546d2520223cec7ccbe9297c08066b54`.
+> **Current release: v2.11** (the version screen shows `2.11`), based on Roland's system 1.07.
+> Output file: `sp404sx_up.bin`, SHA-256 `a66d915701e90430fad1263ec63f8f1f7e5e0e441c9a5465d3139e5f877a52f4`.
 
 ## What it adds
 
@@ -38,7 +38,7 @@ sample at its own pitch, each next pad one semitone higher. A menu opens (TIME/B
 
 | Control | Sets |
 |---|---|
-| CTRL 1 | MIDI channel for the bank (only free channels), or OFF to turn chromatic mode off |
+| CTRL 1 | MIDI channel for the bank (only free channels), or OFF to turn chromatic mode off (or hold SHIFT + TIME/BPM and press CANCEL) |
 | CTRL 2 | `MON`: one note at a time (poly is planned) |
 | CTRL 3 | Octave of the pads, −2 to +2 |
 

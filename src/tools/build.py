@@ -19,7 +19,7 @@ Patches on top of stock 1.07 (addresses in the unpacked image, loaded at 0x0C080
   * CPageSmplEdit (TIME/BPM page): event vtable slot 0x0C12F414 -> ev_stub; 12-byte trampoline at 0x0C0CB5D4 ->
     disp_stub; light (0x0C0CBF0C) and refresh (0x0C0CC0E6) mode ranges extended to the CTRL 3 view
   * fill() slot of all 10 CSmplCharge vtables -> fill_fwd / fill_rev (wrapping Roland's 0x0C0914B8 / 0x0C0921FC)
-  * version screen text 1.07 -> 2.10 (0x0C0F1142, 0x0C0F115A, 0x0C0F116C)
+  * version screen text 1.07 -> 2.11 (0x0C0F1142, 0x0C0F115A, 0x0C0F116C)
   * PAD_INFO load pointer 0x0C093D78 and 100 ms auto-save pointer 0x0C0EF4E8 -> load_stub / tick_stub
   * chromatic mode: the note handler's play request literal 0x0C08948C -> req_stub, pad start pointer 0x0C093F44
     and pad release pointer 0x0C093F38 -> play_stub / rel_stub,
@@ -73,8 +73,8 @@ LED_RANGE, LED_RANGE_OLD, LED_RANGE_NEW = 0x0C0CBF0C, bytes.fromhex('e406 3346 8
 REFRESH_RANGE, REFRESH_OLD, REFRESH_NEW = 0x0C0CC0E6, bytes.fromhex('e402 73fb 3346 890e'), 0xE403
 # Version screen (hold MARK at power-on): Roland's text routine 0x0C0F112C turns the version number 107 into
 # digits by adding '0'. The number itself (0x0C0F1128, also read by the removed test pages) stays 107; only
-# the text changes: last digit 7 + 0x29 = '0', middle digit 0 + 0x31 = '1', first digit 1 + 0x31 = '2': 2.10.
-VERSION_TEXT = ((0x0C0F1142, 0x7030, 0x7029),   # add #48,r0 -> add #41,r0 (ones digit: '7' -> '0')
+# the text changes: last digit 7 + 0x2A = '1', middle digit 0 + 0x31 = '1', first digit 1 + 0x31 = '2': 2.11.
+VERSION_TEXT = ((0x0C0F1142, 0x7030, 0x702A),   # add #48,r0 -> add #42,r0 (ones digit: '7' -> '1')
                 (0x0C0F115A, 0x7030, 0x7031),   # add #48,r0 -> add #49,r0 (tens digit: '0' -> '1')
                 (0x0C0F116C, 0x7030, 0x7031))   # add #48,r0 -> add #49,r0 (hundreds digit: '1' -> '2')
 # More test page methods with no literal pool used from outside, no branch in, one vtable pointer:
