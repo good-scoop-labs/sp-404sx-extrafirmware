@@ -61,9 +61,17 @@ semitone higher, up to pad 12 (+11). Empty pads in the bank play too.
 | CTRL 2 | `MON` | Mono playback (poly will be added later) |
 | CTRL 3 | `o-2` … `o 2` | Octave of the 12 pads: two octaves down to two octaves up |
 
-Press **TIME/BPM** (or SHIFT + TIME/BPM) to leave the menu. With CTRL 1 at `OFF`, pressing another pad also leaves
+Press **TIME/BPM** to leave the menu (SHIFT + TIME/BPM in the menu keeps it open and turns the bank back on if it
+is `OFF`). With CTRL 1 at `OFF`, pressing another pad also leaves
 it, as on the TIME/BPM page; while the bank is chromatic, pads in the menu just play. To change the settings later, play a pad of that bank and press
 SHIFT + TIME/BPM again; opening the menu on a different pad of the bank makes that pad the source.
+
+### Turning it off
+
+Hold **SHIFT + TIME/BPM** (the menu opens) and, while still holding both, press **CANCEL**. The bank goes back to
+normal pads and you're back on the main screen. You can also turn CTRL 1 fully left in the menu (`OFF`) and then
+press TIME/BPM to leave. The setting is saved. To turn it on again, play one of the bank's pads and press
+SHIFT + TIME/BPM (or, with the menu still open at `OFF`, press SHIFT + TIME/BPM there).
 
 ### Playing
 

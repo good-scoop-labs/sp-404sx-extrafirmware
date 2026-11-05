@@ -25,7 +25,7 @@ Patches on top of stock 1.07 (addresses in the unpacked image, loaded at 0x0C080
     and pad release pointer 0x0C093F38 -> play_stub / rel_stub,
     CPagePlay event / enter / refresh slots 0x0C12E060 / 0x0C12E050 / 0x0C12E078 -> pev_stub / pen_stub /
     pref_stub, the event loop's note handler literal 0x0C08F778 -> note_stub, the MIDI receiver's and the note handlers' note gate
-    literals 0x0C0F2784 / 0x0C089480 -> gate_stub / gate2_stub, HOLD's GATE lookup literal 0x0C0F1DD4 -> hold_stub;
+    literals 0x0C0F2784 / 0x0C089480 -> gate_stub / gate2_stub, HOLD's GATE lookup literals 0x0C0F1DD4 (arm) / 0x0C0F1FEC (release-all) -> hold_stub, release-all's playing-pads literal 0x0C0F1FE0 -> chr_playmask;
     pad copy / exchange worker literals 0x0C088BF8 / 0x0C088CB4 -> xcopy_stub / xexch_stub (varispeed follows the sample); TIME/BPM LED blinks in mode 9; code and state in 11 more factory test page methods
 
 usage: python3 src/tools/build.py official/sp404sx_up.bin [-o out/sp404sx_up.bin]
@@ -129,6 +129,13 @@ NOTE_PTR, NOTE_FN = 0x0C08F778, 0x0C089330      # event loop 0x0C08F708 -> note 
 GATE_PTR, GATE_FN, GATE_LOAD = 0x0C0F2784, 0x0C08FD70, 0x0C0F2676   # MIDI receive -> "notes allowed?" (its own literal)
 GATE2_PTR, GATE2_LOADS = 0x0C089480, (0x0C08930A, 0x0C08935E)      # note handlers -> the same check, MIDI events only
 HOLD_PTR, HOLD_LOAD = 0x0C0F1DD4, 0x0C0F1D5A    # HOLD check 0x0C0F1D50 -> R_GET(38 = GATE, pressed pad) (its own literal)
+# HOLD release-all 0x0C0F1E94 (called by page handlers): keeps a held pad only if R_GET(38 = GATE, pad) == 1; its own
+# literal, loaded once into r2 and kept in macl (lds r2,macl), called at four sites as sts macl,r1; mov r8,r5; jsr @r1; mov #38,r4
+HOLD2_PTR, HOLD2_LOAD, HOLD2_MACL = 0x0C0F1FEC, 0x0C0F1EF4, 0x0C0F1EF8
+HOLD2_CALLS = (0x0C0F1F26, 0x0C0F1F8A, 0x0C0F200C, 0x0C0F2074)
+# ... and lets go of a latched pad whose bit in 0x0C085074(bank) (pads with a voice playing) is clear: its own literal,
+# loaded once (mov.l @(8,r15),r4; jsr @r3), straight to chr_playmask (release-all sets mach / macl only after the call)
+PMASK_PTR, PMASK_FN, PMASK_LOAD = 0x0C0F1FE0, 0x0C085074, 0x0C0F1EDE
 # Varispeed follows copy / exchange: the file task's job wrappers (commands 12 / 11, 0x0C088BB0 / 0x0C088C6C) call
 # Roland's workers through their own literals, each loaded once; the workers take the pads from params 60 / 61
 XCOPY_PTR, XCOPY_FN, XCOPY_LOAD = 0x0C088BF8, 0x0C087A64, 0x0C088BD2   # copy worker (0 = done)
@@ -349,6 +356,12 @@ def build(official):
         assert img[a - BASE + 2:a - BASE + 4] == bytes.fromhex('434b'), f'MIDI gate call at {a:#x}'
     assert u32(img, HOLD_PTR) == 0x0C082B34 and const_loads_into(img, HOLD_PTR, HOLD_PTR + 4, []) == [(HOLD_LOAD, HOLD_PTR)] \
         and img[HOLD_LOAD - BASE + 4:HOLD_LOAD - BASE + 8] == bytes.fromhex('430b e426'), 'HOLD GATE lookup literal'
+    assert u32(img, HOLD2_PTR) == 0x0C082B34 and const_loads_into(img, HOLD2_PTR, HOLD2_PTR + 4, []) == [(HOLD2_LOAD, HOLD2_PTR)] \
+        and img[HOLD2_LOAD - BASE] == 0xD2 and img[HOLD2_MACL - BASE:HOLD2_MACL - BASE + 2] == bytes.fromhex('421a') \
+        and all(img[a - BASE:a - BASE + 8] == bytes.fromhex('011a 6583 410b e426') for a in HOLD2_CALLS), 'HOLD release-all GATE literal'
+    assert u32(img, PMASK_PTR) == PMASK_FN and const_loads_into(img, PMASK_PTR, PMASK_PTR + 4, []) == [(PMASK_LOAD, PMASK_PTR)] \
+        and img[PMASK_LOAD - BASE] == 0xD3 and img[PMASK_LOAD - BASE + 2:PMASK_LOAD - BASE + 6] == bytes.fromhex('54f2 430b') \
+        and img[PMASK_LOAD - BASE + 16:PMASK_LOAD - BASE + 18] == bytes.fromhex('420a'), 'HOLD release-all playing-pads literal'
     for p, f, ld in ((XCOPY_PTR, XCOPY_FN, XCOPY_LOAD), (XEXCH_PTR, XEXCH_FN, XEXCH_LOAD)):
         assert u32(img, p) == f and const_loads_into(img, p, p + 4, []) == [(ld, p)] and \
             img[ld - BASE + 2:ld - BASE + 4] == bytes.fromhex('434b'), f'copy / exchange worker literal {p:#x}'
@@ -400,6 +413,8 @@ def build(official):
     put32(new, GATE_PTR, GATE_FN, syms['gate_stub'])
     put32(new, GATE2_PTR, GATE_FN, syms['gate2_stub'])
     put32(new, HOLD_PTR, 0x0C082B34, syms['hold_stub'])
+    put32(new, HOLD2_PTR, 0x0C082B34, syms['hold_stub'])
+    put32(new, PMASK_PTR, PMASK_FN, syms['chr_playmask'])
     put32(new, XCOPY_PTR, XCOPY_FN, syms['xcopy_stub'])
     put32(new, XEXCH_PTR, XEXCH_FN, syms['xexch_stub'])
     assert img[LED_BLINK - BASE:LED_BLINK - BASE + 6] == LED_BLINK_OLD, 'TIME/BPM LED off path not found'
@@ -437,7 +452,7 @@ def build(official):
     left = [hex(BASE + i) for i in range(0, len(new) - 3, 4) if DEV_METHOD <= struct.unpack('>I', new[i:i + 4])[0] < DEV_END
             and not any(lo - BASE <= i < hi - BASE for lo, hi in ours)]
     assert not left, f'pointers into the reused test page method: {left}'
-    hooks = {REQ_PTR: syms['req_stub'], PLAY_PTR: syms['play_stub'], REL_PTR: syms['rel_stub'], PEV_SLOT: syms['pev_stub'], NOTE_PTR: syms['note_stub'], GATE_PTR: syms['gate_stub'], GATE2_PTR: syms['gate2_stub'], HOLD_PTR: syms['hold_stub'], XCOPY_PTR: syms['xcopy_stub'], XEXCH_PTR: syms['xexch_stub'], PEN_SLOT: syms['pen_stub'], PREF_SLOT: syms['pref_stub']}   # planned entries
+    hooks = {REQ_PTR: syms['req_stub'], PLAY_PTR: syms['play_stub'], REL_PTR: syms['rel_stub'], PEV_SLOT: syms['pev_stub'], NOTE_PTR: syms['note_stub'], GATE_PTR: syms['gate_stub'], GATE2_PTR: syms['gate2_stub'], HOLD_PTR: syms['hold_stub'], HOLD2_PTR: syms['hold_stub'], PMASK_PTR: syms['chr_playmask'], XCOPY_PTR: syms['xcopy_stub'], XEXCH_PTR: syms['xexch_stub'], PEN_SLOT: syms['pen_stub'], PREF_SLOT: syms['pref_stub']}   # planned entries
     for n, lo, hi, slot, ret0 in EXTRA:
         left = [hex(BASE + i) for i in range(0, len(new) - 3, 4) if lo <= struct.unpack('>I', new[i:i + 4])[0] < hi
                 and not any(a - BASE <= i < b - BASE for a, b in ours)
@@ -458,7 +473,7 @@ def build(official):
                {m[4] - BASE + k for m in LIT_MOVES for k in range(4)} | {m[0] - BASE + k for m in LIT_MOVES for k in range(2)} |
                set(range(OSFN - BASE, OSFN - BASE + len(persist))) | set(range(WSPFN - BASE, WSPFN - BASE + len(wsp))) |
                set(range(HELPER_CODE - BASE, HELPER_CODE - BASE + len(helper))) |
-               {a - BASE + k for a in (LOAD_PTR, TICK_PTR, DEV_SLOT, REQ_PTR, PLAY_PTR, REL_PTR, PEV_SLOT, NOTE_PTR, GATE_PTR, GATE2_PTR, HOLD_PTR, XCOPY_PTR, XEXCH_PTR, PEN_SLOT, PREF_SLOT) for k in range(4)} |
+               {a - BASE + k for a in (LOAD_PTR, TICK_PTR, DEV_SLOT, REQ_PTR, PLAY_PTR, REL_PTR, PEV_SLOT, NOTE_PTR, GATE_PTR, GATE2_PTR, HOLD_PTR, HOLD2_PTR, PMASK_PTR, XCOPY_PTR, XEXCH_PTR, PEN_SLOT, PREF_SLOT) for k in range(4)} |
                set(range(DEV - BASE, DEV - BASE + len(dev))) |
                {x - BASE for n, lo, hi, slot, ret0 in EXTRA for x in (*range(lo, lo + len(extra[n])), *(range(slot, slot + 4) if slot else ()))} | {TEST_GATE - BASE, TEST_GATE - BASE + 1, LED_RANGE - BASE + 1, REFRESH_RANGE - BASE + 1, LED_BLINK - BASE + 1} |
                {a - BASE + 1 for a, _, _ in VERSION_TEXT})

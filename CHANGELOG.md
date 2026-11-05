@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+- **Turning chromatic mode off:** hold SHIFT + TIME/BPM (the chromatic menu opens) and press CANCEL while both
+  are still held: the bank goes back to normal pads (same as CTRL 1 fully left) and the menu closes for the main
+  screen. Any other CANCEL works as stock (issue #2).
+- SHIFT + TIME/BPM in the chromatic menu no longer leaves it: it works as from the main screen, turning the bank
+  back on for the current pad if it's `OFF`, and the menu stays open. TIME/BPM alone leaves.
+- **HOLD on every key** of a chromatic bank, as v2.10 intended: only the source pad latched, because Roland
+  releases latched pads that have no voice of their own playing, and a key's note plays on the source's voice. A new note also drops the latch of a key held
+  earlier, so that key plays on its next press. Turning a bank off (CANCEL gesture or CTRL 1 fully left) releases
+  the note it's playing, so a held note doesn't keep sounding.
+
 ## v2.10
 
 The version screen shows `2.10`. Output `sp404sx_up.bin` SHA-256
