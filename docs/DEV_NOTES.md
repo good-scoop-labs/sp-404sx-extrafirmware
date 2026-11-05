@@ -549,3 +549,36 @@ Implementation (vari.c "chromatic mode"):
 - Checks: host tests; patch.py output identical to the build; the web patcher's code (patcher-core.js + patch
   data) run in JavaScriptCore (no Node on this machine; same checks as check_web_patch.js): official file
   accepted, result byte-identical with the release hash, patched file recognised, modified input refused.
+
+## After v2.10 — HOLD on every key (reported: only the source latches, keys stop on release, GATE on)
+- Roland's HOLD layer 0x0C0F1818 (panel 0xA0 events, converted by 0x0C0F1738 with the current bank into the key's
+  own note / channel; pad = 0x0C0F1610(ch, note)) arms and latches per pressed pad, i.e. per key; the v2.10a hook
+  makes the arm's GATE lookup answer the source's GATE, so keys did arm and latch.
+- Cause: release-all 0x0C0F1E94 (called from many page handlers, e.g. the play page at 0x0C0C4C4A, result = HOLD
+  LED). Per bank (0..9, back to 0x0C0F1EDE) it takes m = 0x0C085074(bank) (bit n: pad bank*12 + n has a voice
+  playing, from the voice list) and walks the 12 pads: a pad in states 2..4 whose bit is clear is released (release
+  event, state 0); if the bit is set it is kept only if R_GET(38 = GATE, pad) == 1. A key never has a voice of its
+  own (the source's voice plays it), so every latched key was released on the next pass.
+- First attempt (hooking only the GATE lookup) did not help on hardware: keys never get past the bit test.
+- Hooks: the mask literal 0x0C0F1FE0 (loaded once at 0x0C0F1EDE, `mov.l @(8,r15),r4; jsr @r3`) -> chr_playmask
+  directly (no stub: release-all sets mach / macl only after this call, and Roland's mask function clobbers them
+  anyway): on a chromatic bank with anything playing (only the source can play there), all 12 bits are set. The GATE
+  literal 0x0C0F1FEC (loaded once at 0x0C0F1EF4, kept in macl; called at 0x0C0F1F26 / 1F8A / 200C / 2074 as
+  `sts macl,r1; mov r8,r5; jsr @r1; mov #38,r4`) -> hold_stub -> chr_holdget, so keys answer the source's GATE (the
+  stub saves mach / macl, which hold release-all's two function pointers there). The two other R_GET literals of
+  this code ask for the bank (53, 0x0C0F1908) and the MIDI channel (2, 0x0C0F1730).
+- One voice per bank: a key latched earlier stayed at state 3 after another note took the voice; its next press
+  was turned into its release (ignored by chr_release, not the sounding key). chr_holdclr (chrz) clears state 3 of
+  the bank's pads when a key or MIDI note starts the source (chr_play with a pending pitch).
+- Bank off with a latched key: the source kept sounding (release-all then releases the key pad, which no longer maps
+  to the source). chr_off (chrx, 28 B, tail call) releases the source (R_RELPAD) when CTRL 1 goes to OFF; CANCEL
+  now goes through chr_knob(0, 0) too.
+- Space: chrz 272 of 288 B, chrw 964 of 980 B, chrh 100 of 100 B (chr_playmask), chrx 464 of 464 B.
+
+## Release v2.11 (fixes only, SHA-256 a66d915701e90430fad1263ec63f8f1f7e5e0e441c9a5465d3139e5f877a52f4)
+- The last fix test build (MD5 0c058823deea623db4c801ad072fee92, tested on hardware) plus the version screen:
+  ones digit `add #41` -> `add #42` at 0x0C0F1142 ("2.11"). Built with GCC 13.3.0 / binutils 2.42 built from
+  source on macOS. Patch data regenerated (RELEASE = '2.11': 260 runs, 7013 bytes).
+- Checks: host tests; patch.py output identical to the build; the web patcher's code (patcher-core.js + patch
+  data) run in JavaScriptCore (no Node on this machine; same checks as check_web_patch.js): official file
+  accepted, result byte-identical with the release hash, patched file recognised, modified input refused.

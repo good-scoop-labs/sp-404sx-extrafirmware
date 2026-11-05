@@ -95,7 +95,8 @@ int main(){
   edit_ev(1,2,0); CHECK((chr_tab.b[2].mode&7)==0 && !strcmp(shbuf,"o-2"), "CTRL 3 left: o-2");
   edit_ev(1,2,127); CHECK((chr_tab.b[2].mode&7)==4 && !strcmp(shbuf,"o 2"), "CTRL 3 right: o 2");
   edit_ev(1,2,64); CHECK((chr_tab.b[2].mode&7)==2 && !strcmp(shbuf,"o 0"), "CTRL 3 centre: o 0");
-  edit_ev(1,0,0); CHECK(!chr_tab.b[2].src && shs==STR_OFF, "CTRL 1 fully left: OFF");
+  mock_relpad=-2; edit_ev(1,0,0); CHECK(!chr_tab.b[2].src && shs==STR_OFF && mock_relpad==26, "CTRL 1 fully left: OFF, the note sounding is released (a HOLD latch on a key would keep it)");
+  mock_relpad=-2; edit_ev(1,0,3); CHECK(!chr_tab.b[2].src && mock_relpad==-2, "CTRL 1 moved within OFF: nothing more released");
   CHECK(edit_ev(0,5,1)==0 && tp.mode==MODE_CHR, "menu with the bank OFF: a pad press goes to Roland (which leaves the page for another pad)");
   CHECK(edit_ev(0,5,0)==0, "and its release too");
   mock_page[0]=VT_PLAY; note(6,25); CHECK(mock_play_pad==-2, "OFF: bank C pads are plain pads again");
@@ -110,8 +111,29 @@ int main(){
   CHECK(edit_ev(0,5,1)==1, "menu with the bank chromatic: a pad press doesn't leave the page (the key plays)");
   mock_setpage_slot=-1; CHECK(edit_ev(0,40,1)==1 && !chr_st.menu && mock_setpage_slot==1, "menu: TIME/BPM leaves for the main screen");
   open_menu(26); mock_setpage_slot=-1; mock_shift=1;
-  CHECK(edit_ev(0,40,1)==1 && !chr_st.menu && mock_setpage_slot==1, "menu: SHIFT + TIME/BPM leaves too (not taken by Roland)"); mock_shift=0;
+  CHECK(edit_ev(0,40,1)==1 && chr_st.menu && tp.mode==MODE_CHR && mock_setpage_slot==-1 && chr_tab.b[2].src==27,
+        "menu: SHIFT + TIME/BPM stays in the menu, bank stays on (not taken by Roland)");
+  mock_fwdmode=1; CHECK(edit_ev(0,40,1)==1 && !chr_st.menu && mock_setpage_slot==1, "menu, FWD mode: SHIFT + TIME/BPM leaves");
+  mock_fwdmode=0; mock_shift=0;
   mock_setpage_slot=-1; CHECK(edit_ev(0,40,0)==0 && mock_setpage_slot==-1, "TIME/BPM release: nothing");
+  /* SHIFT + TIME/BPM held, CANCEL: the bank turns off (issue #2) */
+  open_menu(26);
+  CHECK(edit_ev(0,34,1)==0 && chr_tab.b[2].src==27, "menu: CANCEL alone goes to Roland, bank stays");
+  mock_shift=1; CHECK(edit_ev(0,34,1)==0 && chr_tab.b[2].src==27, "menu: SHIFT + CANCEL without TIME/BPM held goes to Roland");
+  mock_held=1; CHECK(edit_ev(0,34,0)==0 && chr_tab.b[2].src==27, "CANCEL release: nothing");
+  mock_held=0; edit_ev(1,0,0); CHECK(!chr_tab.b[2].src && chr_st.menu, "(CTRL 1 fully left: OFF, menu open)");
+  mock_setpage_slot=-1; chr_st.dirty=0;
+  CHECK(edit_ev(0,40,1)==1 && chr_tab.b[2].src==27 && chr_st.dirty && chr_st.menu && mock_setpage_slot==-1,
+        "menu, bank OFF: SHIFT + TIME/BPM turns it on again and stays in the menu");
+  edit_draw(); CHECK(tp.mode==MODE_CHR && !strcmp(shbuf,"C 3"), "and the menu shows its channel again");
+  CHECK(edit_ev(0,34,1)==0 && chr_st.menu, "CANCEL with TIME/BPM no longer held goes to Roland");
+  mock_held=1; mock_setpage_slot=-1; chr_st.dirty=0; mock_relpad=-2;
+  CHECK(edit_ev(0,34,1)==1 && !chr_tab.b[2].src && chr_st.dirty && !chr_st.menu && mock_setpage_slot==1 && mock_relpad==26,
+        "SHIFT + TIME/BPM held + CANCEL: bank off, its note released, and the menu closes for the main screen");
+  mock_shift=0; mock_held=0;
+  { int keys=0; for(int k=0;k<12;k++) if(chr_keyof(24+k)>=0) keys++; CHECK(!keys, "after CANCEL: bank C pads are normal pads"); }
+  open_menu(26); CHECK(chr_tab.b[2].src==27, "SHIFT + TIME/BPM on the source pad turns it on again");
+  edit_ev(0,40,1);
   tp.mode=MODE_CHR; edit_draw(); CHECK(tp.mode==7, "a left-over mode 9 later falls back to the CTRL 1 view");
   /* keys */
   mock_page[0]=VT_PLAY;
@@ -145,6 +167,20 @@ int main(){
     chr_holdget(38,70,g2); CHECK(asked==70, "for a normal pad: its own");
     mock_page[0]=0x0C12EFE0u; chr_holdget(38,29,g2); CHECK(asked==29, "pattern mode: its own (stock)");
     mock_page[0]=VT_PLAY; }
+  /* HOLD on one voice: a new note drops the latch of keys latched earlier; held keys and other banks keep theirs */
+  mock_holdst[28]=3; mock_holdst[29]=2; mock_holdst[30]=1; mock_holdst[70]=3;
+  note(6,31); CHECK(!mock_holdst[28] && mock_holdst[29]==2 && mock_holdst[30]==1 && mock_holdst[70]==3,
+                    "a key plays: the bank's latched keys are unlatched, held keys and other banks untouched");
+  mock_holdst[28]=3; midi(2,64,100); CHECK(!mock_holdst[28], "a MIDI note on the bank's channel: unlatched too");
+  mock_holdst[28]=3; chr_play(6,26,100); CHECK(mock_holdst[28]==3, "Roland restarting the source (no key): latch kept");
+  chr_play(1,26,100); CHECK(mock_holdst[28]==3, "pattern playback of the source: latch kept");
+  memset(mock_holdst,0,sizeof mock_holdst);
+  /* HOLD release-all keeps latched pads that play; the source (C3, bit 2) plays the bank's keys */
+  { mock_pmask[2]=1u<<2; CHECK(chr_playmask(2)==0xFFF, "release-all: while the source plays, every key of the bank counts as playing");
+    mock_pmask[2]=0; CHECK(chr_playmask(2)==0, "nothing playing: the keys neither");
+    mock_pmask[5]=1u<<3; CHECK(chr_playmask(5)==1u<<3, "a normal bank: Roland's answer");
+    mock_pmask[2]=1u<<2; chr_tab.b[2].src=0; CHECK(chr_playmask(2)==1u<<2, "bank turned off: Roland's answer");
+    chr_tab.b[2].src=27; mock_pmask[2]=mock_pmask[5]=0; }
   /* pages */
   mock_page[0]=0x0C12EFE0u; note(6,30); CHECK(mock_play_pad==30, "pattern mode (pattern select page): stock pads");
   mock_page[0]=VT_RESMP; mock_page[2]=1; note(6,30); CHECK(mock_play_pad==30, "resample, choosing destination: stock pads");

@@ -46,4 +46,9 @@ static int mock_kicks; static int mock_kick(void) { mock_kicks++; return 0; }   
 #define R_SMPKICK mock_kick
 static int mock_setpage_slot = -1; static void mock_setpage(void *mgr, int slot) { mock_setpage_slot = slot; }
 #define R_SETPAGE mock_setpage
+static int mock_holdst[120];                                 /* Roland's HOLD state per pressed pad (3 = latched) */
+#define HOLDST    mock_holdst
+static unsigned mock_pmask[10];                              /* Roland: per bank, pads with a voice playing */
+static unsigned mock_pmask_fn(int b) { return mock_pmask[b]; }
+#define R_PMASK   mock_pmask_fn
 #define CHR(n)    __attribute__((noinline))

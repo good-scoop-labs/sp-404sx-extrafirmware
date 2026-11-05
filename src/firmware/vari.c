@@ -81,6 +81,7 @@ struct chr chr_st SECT(".chrdata");
 #define S_MAX    35               /* highest semitone (just under 8x) */
 #define MODE_CHR 9                /* TIME/BPM page: chromatic menu */
 #define BTN_SHIFT 20
+#define BTN_CANCEL 34
 /* 2^(k/12) - 1 in Q16 for k = 0..11 */
 static const u16 chr_semi[12] SECT(".rodata.chr") = { 0, 3897, 8026, 12400, 17034, 21944, 27146, 32657, 38496, 44682, 51236, 58179 };
 static const char chr_on_s[] SECT(".rodata.chr") = "C.ON";
@@ -242,6 +243,8 @@ MIDI int vari_event(struct page *p, struct event *e) {
 #define REQOBJ    ((void *)0x0CCAE0C4)                                /* the note handler's play request object   */
 #define R_SMPKICK ((int  (*)(void))0x0C08FDDC)                        /* sampler armed (resample RDY): start it   */
 #define R_SETPAGE ((void (*)(void *mgr, int slot))0x0C0BE884)         /* show page `slot` (1 = play page)         */
+#define HOLDST    ((volatile int *)0x0CE327DC)                        /* HOLD state per pressed pad, 3 = latched    */
+#define R_PMASK   ((unsigned (*)(int bank))0x0C085074)                /* bit n: pad n of the bank has a voice playing */
 #endif
 #define VT_PLAY  0x0C12E044u   /* CPagePlay vtable     */
 #define VT_EDIT  0x0C12F3F8u   /* CPageSmplEdit (TIME/BPM page) vtable */
@@ -327,13 +330,20 @@ CHR(open) static void chr_open(struct page *p) {
     chr_st.menu = 1;
     p->mode = MODE_CHR;
 }
+/* Bank off (CTRL 1 fully left, CANCEL): release the note sounding first; HOLD may have latched it on a key, whose
+   release no longer reaches the source once the bank is off. */
+CHR(off) static void chr_off(struct cbank *c) {
+    int s = c->src;
+    c->src = 0;
+    if (s) R_RELPAD(s - 1);
+}
 CHR(knob) static void chr_knob(int id, int v) {
     struct cbank *c = &chr_tab.b[chr_st.mb];
     u32 old = *(u32 *)c;
     if (v < 0) v = 0;
     if (id == 0) {                                  /* OFF fully left, then the free channels */
         int i = (v * (chr_free(chr_st.mb, -1) + 1)) >> 7;
-        if (!i) c->src = 0;
+        if (!i) chr_off(c);
         else {
             c->ch = (unsigned char)chr_free(chr_st.mb, i - 1);
             c->src = (unsigned char)(chr_st.mpad + 1);
@@ -370,10 +380,19 @@ CHR(menu) static int chr_menu(struct page *p) {
     chr_show();
     return 1;
 }
-/* Events in the menu: knobs set the bank; TIME/BPM, with or without SHIFT, leaves for the main screen (Roland
-   takes SHIFT + TIME/BPM for itself, so the menu does it). Pads: while the bank is chromatic they only play (the
-   page stays); with CTRL 1 at OFF they go to Roland, which leaves the page for another pad, as on the TIME/BPM
-   page itself. */
+/* Hold SHIFT + TIME/BPM (the menu opens), then press CANCEL: the bank turns off as with CTRL 1 fully left, and the
+   menu closes for the main screen, as TIME/BPM does (issue #2). Any other CANCEL goes to Roland. */
+CHR(cancel) static int chr_cancel(struct event *e) {
+    if (!e->val || !R_HELD(BTN_SHIFT) || !R_HELD(BTN_BPM)) return 0;
+    chr_knob(0, 0);
+    chr_st.menu = 0;
+    R_SETPAGE(0, 1);
+    return 1;
+}
+/* Events in the menu: knobs set the bank; TIME/BPM leaves for the main screen (SHIFT + TIME/BPM is caught by
+   vari_ev first and turns the bank on again; it only gets here in FWD mode, where it leaves too). Pads: while the
+   bank is chromatic they only play (the page stays); with CTRL 1 at OFF they go to Roland, which leaves the page
+   for another pad, as on the TIME/BPM page itself. */
 CHR(menuev) static int chr_menu_ev(struct event *e) {
     if (e->type == 1 && e->id <= 2) { chr_knob(e->id, e->val); chr_show(); return 1; }
     if (e->type != 0) return 0;
@@ -387,8 +406,9 @@ CHR(padkey) static int chr_padkey(struct event *e) {
     int id = e->id;
     return e->type == 0 && e->val && id >= 1 && id <= 12 && chr_keyof(R_GET(P_BANK, -1) * 12 + id - 1) >= 0;
 }
-/* HOLD (replaces the pointer to R_GET in Roland's hold check 0x0C0F1D50, which asks whether the pressed pad has
-   GATE on): a key of a chromatic bank answers with its source's setting, so HOLD latches every key. */
+/* HOLD (replaces Roland's pointers to R_GET in its hold check 0x0C0F1D50 and its release-all 0x0C0F1E94, which ask
+   whether a pad has GATE on): a key of a chromatic bank answers with its source's setting, so HOLD latches every key
+   and release-all keeps it. */
 typedef int (*getfn)(int id, int pad);
 CHR(padkey) int chr_holdget(int id, int pad, getfn orig) {
     int b = chr_keyof(pad);
@@ -485,10 +505,27 @@ CHR(stop) static void chr_stop(int pad) {
     R_VFREE(7);
     R_VFREE2();
 }
+/* HOLD release-all 0x0C0F1E94 (replaces its pointer to R_PMASK): it lets go of every latched (or held) pad that has
+   no voice playing. A key never has a voice of its own (the source plays it, and is all that plays in a chromatic
+   bank), so while the bank plays, its pads all count as playing; the only key still latched is the one sounding
+   (chr_holdclr). */
+CHR(playmask) unsigned chr_playmask(int b) {
+    unsigned m = R_PMASK(b);
+    if (m && chr_tab.b[b].src) m = 0xFFF;
+    return m;
+}
+/* HOLD keeps a state per pressed pad, but a chromatic bank has one voice: when a key or MIDI note takes it, keys of
+   the bank latched earlier no longer sound, so their latch goes (else their next press would only be taken as their
+   release). Keys held down (states 1, 2) keep theirs. */
+CHR(holdclr) static void chr_holdclr(int b) {
+    volatile int *h = HOLDST + 12 * b, *e = h + 12;
+    do if (*h == 3) *h = 0; while (++h < e);
+}
 CHR(play) int chr_play(int kind, int pad, int vel) {
     int b = chr_srcbank(pad);
     if (b >= 0) {
         if (chr_st.pend) {
+            chr_holdclr(b);
             if (chr_st.pend != chr_st.cur[b] && R_PLAYING(pad)) chr_stop(pad);
             chr_st.cur[b] = chr_st.pend;
         } else if (kind != K_PANEL || !chr_ok()) chr_st.cur[b] = 0;   /* pattern, other pages: its own pitch */
@@ -522,10 +559,11 @@ CHR(ratio) static u32 chr_ratio(int pad, u32 r) {
     return r > V_MAX ? V_MAX : r;
 }
 
-/* TIME/BPM page event hook (ev_stub): the chromatic menu, SHIFT + TIME/BPM, keys; everything else to vari_event. */
+/* TIME/BPM page event hook (ev_stub): SHIFT + TIME/BPM (in the menu too: turns the bank on again, as from the
+   play page), the chromatic menu, keys; everything else to vari_event. */
 CAVE int vari_ev(struct page *p, struct event *e) {
-    if (p->mode == MODE_CHR) return chr_menu_ev(e);
     if (e->type == 0 && e->id == BTN_BPM && e->val && R_HELD(BTN_SHIFT) && !FWDMODE) { chr_open(p); return 1; }
+    if (p->mode == MODE_CHR) return e->id == BTN_CANCEL ? chr_cancel(e) : chr_menu_ev(e);
     if (chr_padkey(e)) return 1;
     return vari_event(p, e);
 }

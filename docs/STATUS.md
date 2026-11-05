@@ -1,7 +1,20 @@
 # Status
 
-What has been confirmed on hardware, and what hasn't yet. Release v2.10 = test build v2.10c (byte-identical).
+What has been confirmed on hardware, and what hasn't yet. Release v2.11 = the last fix test build plus the `2.11`
+version screen. Release v2.10 = test build v2.10c (byte-identical).
 Release v2.00 = internal build 13 plus the `2.00` version screen. The SP-404SX and SP-404A run the same firmware, so this applies to both.
+
+## v2.11
+
+Confirmed on hardware (fix test builds):
+- SHIFT + TIME/BPM + CANCEL turns the bank off and returns to the main screen; CANCEL alone works as stock.
+- SHIFT + TIME/BPM in the menu keeps it open and turns an `OFF` bank back on; TIME/BPM leaves.
+- HOLD latches every key of a chromatic bank (both ways: HOLD then key, and key then HOLD), and playing another
+  key moves the note.
+- Turning a bank off releases a held note.
+- Version screen `2.11`.
+
+Still not tested: the v2.10 list below.
 
 ## v2.10
 
@@ -9,11 +22,11 @@ Confirmed on hardware (test builds E1 … v2.10c):
 - Chromatic mode: SHIFT + TIME/BPM opens the menu (TIME/BPM blinks) and makes the last pad's bank a keyboard;
   all 12 pads play in semitones, including empty ones; loop pads switch notes correctly.
 - Menu: CTRL 1 MIDI channel (free ones only, OFF fully left), CTRL 2 `MON`, CTRL 3 octave; leaving with
-  TIME/BPM or SHIFT + TIME/BPM, and with another pad when the bank is OFF.
+  TIME/BPM or SHIFT + TIME/BPM (v2.11: SHIFT + TIME/BPM stays), and with another pad when the bank is OFF.
 - MIDI on a bank's channel (note 60 = own pitch); `C.ON` on the main screen.
 - Resampling: chromatic pads and MIDI play at `RDY` / `REC`, and any MIDI note starts the recording.
-- TIME/BPM and START/END/LEVEL pages stay open for pads of a chromatic bank; HOLD on every key; MARK keeps
-  the chromatic pitch.
+- TIME/BPM and START/END/LEVEL pages stay open for pads of a chromatic bank; MARK keeps the chromatic pitch.
+  (HOLD was listed here, but on hardware only the source pad latched; fixed in v2.11.)
 - Varispeed follows copy and exchange, including between identical samples.
 - Version screen `2.10`.
 

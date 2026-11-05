@@ -50,7 +50,7 @@ SECTIONS {
   .chrd : { *(.text.chrkeyof) *(.text.chrstop) . = ALIGN(4); } > chrd
   .chre : { *(.text.chrpagerefres) . = ALIGN(4); } > chre
   .chrf : { *(.text.chrpageevent) . = ALIGN(4); } > chrf
-  .chrh : { *(.text.chrstubs) . = ALIGN(4); } > chrh
+  .chrh : { *(.text.chrstubs) *(.text.chrplaymask) . = ALIGN(4); } > chrh
   .chri : { *(.text.chrrequest) . = ALIGN(4); } > chri
   .chrj : { *(.text.chrused) . = ALIGN(4); } > chrj
   .chrl : { *(.text.chrkeydown) *(.text.chrpage) . = ALIGN(4); } > chrl
@@ -61,9 +61,9 @@ SECTIONS {
   .chrs : { *(.text.chrrelease) . = ALIGN(4); } > chrs
   .chru : { *(.text.chrfree) . = ALIGN(4); } > chru
   .chrv : { *(.text.chrpageenter) . = ALIGN(4); } > chrv
-  .chrx : { *(.text.chropen) *(.text.chrload) . = ALIGN(4); } > chrx
+  .chrx : { *(.text.chropen) *(.text.chrload) *(.text.chrcancel) *(.text.chroff) . = ALIGN(4); } > chrx
   .chry : { *(.text.chrnote) *(.text.chrcheck) . = ALIGN(4); } > chry
-  .chrz : { *(.text.chrknob) . = ALIGN(4); } > chrz
+  .chrz : { *(.text.chrknob) *(.text.chrholdclr) . = ALIGN(4); } > chrz
   .chrw : { *(.text.chrxop) *(.text.chrxset) *(.text.chrgate) *(.text.chrshow) *(.text.chrstubs2) *(.text.chrpadkey) *(.text.chrplay) *(.text.chrbankof) . = ALIGN(4); } > chrw
   .chrg : { *(.rodata.chr) . = ALIGN(4); } > chrg
   .chrk : { *(.chrdata) . = ALIGN(4); } > chrk
