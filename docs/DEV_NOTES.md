@@ -638,3 +638,12 @@ Implementation (vari.c "chromatic mode"):
 - To check on hardware: a ~10 s stereo and a mono sample at knob 124, started cold, several times; chromatic +7 and
   higher (+12, +24) on the same samples; PTN at a fast pattern tempo; reverse; loop on and off; normal speed and
   OFF unchanged; several long samples at once (other voices keep streaming while one starts).
+
+## Release v2.12 (fixes only, SHA-256 a717922dc42cadd133f5f23719e112817bd3239bc18460e5407f6a049a6aeeb1)
+- Test build issue1b (MD5 46b28f2779c812f903bb582f0244ada2, tested on hardware) plus the version screen: ones
+  digit `add #42` -> `add #43` at 0x0C0F1142 ("2.12"); the unpacked image differs from issue1b only at 0x0C0F1143.
+  Built with GCC 13.3.0 / binutils 2.42 built from source on macOS. Patch data regenerated (RELEASE = '2.12':
+  258 runs, 7108 bytes).
+- Checks: host tests; patch.py output identical to the build; the web patcher's code (patcher-core.js + patch
+  data) run in JavaScriptCore (no Node on this machine; same checks as check_web_patch.js): official file
+  accepted, result byte-identical with the release hash, patched file recognised, modified input refused.

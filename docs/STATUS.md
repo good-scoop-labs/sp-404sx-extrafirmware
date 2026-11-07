@@ -1,8 +1,17 @@
 # Status
 
-What has been confirmed on hardware, and what hasn't yet. Release v2.11 = the last fix test build plus the `2.11`
-version screen. Release v2.10 = test build v2.10c (byte-identical).
+What has been confirmed on hardware, and what hasn't yet. Release v2.12 = test build v2.11-issue1b plus the `2.12`
+version screen (one byte). Release v2.11 = the last fix test build plus the `2.11` version screen. Release v2.10 =
+test build v2.10c (byte-identical).
 Release v2.00 = internal build 13 plus the `2.00` version screen. The SP-404SX and SP-404A run the same firmware, so this applies to both.
+
+## v2.12
+
+Confirmed on hardware (test build v2.11-issue1b):
+- Long samples (streamed from the card) with varispeed play to the end, at the fast end of CTRL 3 (issue #1) and
+  at slower speeds (the first issue #1 test build had cut them off at every speed).
+
+Not yet seen on hardware: the `2.12` version screen (the only change from the tested build).
 
 ## v2.11
 
