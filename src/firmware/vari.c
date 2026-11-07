@@ -111,10 +111,6 @@ static unsigned char pad_fp(int pad);
 #define V_MAX    0x7FFFFu           /* the resampler supports any ratio < 8 (chromatic notes up to +35 st) */
 
 
-static int cur_pad(void) {
-    int pad = R_GET(P_CURPAD, -1);
-    return (pad >= 0 && pad < 120) ? pad : -1;
-}
 /* Stock Time Modify rate in 1/1000 (0x0C09611C): target * 1000 / orig, folded by octaves into 500..1300. */
 LED __attribute__((noinline)) static int tm_rate(int target10, int orig10) {
     int r;
@@ -133,6 +129,10 @@ DEV __attribute__((noinline)) static int base_bpm(int pad) {
         if (sync == 1) return R_DIV(orig * tm_rate(R_DIV(R_TEMPO(), 10), orig), 1000);
     }
     return orig;
+}
+DEV static int cur_pad(void) {
+    int pad = R_GET(P_CURPAD, -1);
+    return (pad >= 0 && pad < 120) ? pad : -1;
 }
 /* Speed ratio for a pad in Q16 (0x10000 = normal). Any stored byte gives a ratio in [0.25, 4). */
 DEV __attribute__((noinline)) u32 pad_ratio(int pad) {
@@ -610,13 +610,42 @@ static int frames_needed(u32 ph, int m, u32 r) {        /* floor(ph + (m-1)*r): 
     return (int)((ph + (u32)(m - 1) * r) >> 16);
 }
 
+/* Card streaming. A long sample plays from its RAM head, then from two 24 KB card buffers in turn; Roland's fill
+   ends the voice when the buffer it needs isn't loaded, and flags a finished buffer in *flag (one bit per call).
+   Its caller refills that buffer after the call: directly during playback, but during the 4-5 blocks a voice start
+   renders at once only through the sample task's queue, run after the start, as is the second buffer's first load.
+   Faster than ~1.4x (stereo) a start runs out of data and the note stops after its head (issue #1); faster than
+   1.5x a block can also finish two buffers. So a faster voice refills a finished buffer itself, right after the
+   fill call, with the call Roland's playback service makes there (nothing is left in *flag for the caller), and
+   loads the second buffer at the note's start. Normal speed and slower: Roland's own handling, as before. */
+#ifndef R_REFILL
+#define R_REFILL ((int (*)(void *feeder))0x0C0911B4)   /* refill the buffer the last fill finished (synchronous) */
+#endif
+#define O_CHUNKS 8     /* feeder: card chunks after the head (refills only exist above 2)                    */
+#define O_LOAD1  48    /* feeder (forward): second buffer's first load still to be queued and run            */
+/* After a fill call: refill the buffer it finished. No flag: a faster note starts, and can reach the second buffer
+   before Roland's queued load of it runs; load it now with a refill instead, as Roland does for pads it streams
+   synchronously (cleared, the start doesn't queue the load). */
+LED __attribute__((noinline)) static void stream_refill(void *obj, int *flag) {
+    if (flag) {
+        if (!*flag) return;
+        *flag = 0;
+    } else {
+        if (!OBJ_I(obj, O_LOAD1)) return;
+        OBJ_I(obj, O_LOAD1) = 0;
+    }
+    R_REFILL(obj);
+}
+
 /* Fetch n source frames into sL/sR: from Roland's fill until the sample ends, silence after. */
-static void fetch(void *obj, s16 *sL, s16 *sR, int n, int *flag, fillfn orig, int *ended, int *real) {
+static inline __attribute__((always_inline)) void fetch(void *obj, s16 *sL, s16 *sR, int n, int *flag, fillfn orig,
+                                                        u32 r, int *ended, int *real) {
     *real = n;
     if (n <= 0) return;
     if (!*ended) {
         int c = n;
         if (orig(obj, sL, sR, flag, &c) == 0) { *ended = 1; *real = c; }
+        if (r > UNITY) stream_refill(obj, flag);
     } else *real = 0;
     for (int i = *real; i < n; i++) { sL[i] = 0; sR[i] = 0; }
 }
@@ -634,6 +663,8 @@ int vari_fill(void *obj, s16 *L, s16 *R, int *flag, int *frames, fillfn orig) {
     if (OBJ_I(obj, O_CURSOR) + 1 != s->nxt) {          /* new note, loop restart, or speed just enabled */
         s->aL = s->aR = s->bL = s->bR = 0;
         s->ph = 2 * UNITY;                               /* consume 2 frames before the first output */
+        if (r > UNITY && OBJ_I(obj, O_CHUNKS) > 2)
+            stream_refill(obj, 0);                       /* faster: the second buffer, now */
     }
     int o = 0, ended = 0, bad = -1;
     s16 tL[8], tR[8];
@@ -656,11 +687,11 @@ int vari_fill(void *obj, s16 *L, s16 *R, int *flag, int *frames, fillfn orig) {
         if (m <= 0) {                                    /* last few outputs: one at a time via tL/tR */
             n = (int)(s->ph >> 16);
             if (n > 8) n = 8;                            /* ph < UNITY + r before an output: <= 8 for r < 8x */
-            fetch(obj, tL, tR, n, flag, orig, &ended, &real);
+            fetch(obj, tL, tR, n, flag, orig, r, &ended, &real);
             run(s, L + o, R + o, tL, tR, 1, r, real, &b);
             m = 1;
         } else {
-            fetch(obj, L + place, R + place, n, flag, orig, &ended, &real);
+            fetch(obj, L + place, R + place, n, flag, orig, r, &ended, &real);
             run(s, L + o, R + o, L + place, R + place, m, r, real, &b);
         }
         if (ended && bad < 0 && b >= 0) bad = o + b;

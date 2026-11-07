@@ -52,3 +52,7 @@ static unsigned mock_pmask[10];                              /* Roland: per bank
 static unsigned mock_pmask_fn(int b) { return mock_pmask[b]; }
 #define R_PMASK   mock_pmask_fn
 #define CHR(n)    __attribute__((noinline))
+#ifndef R_REFILL                                             /* Roland's card refill: nothing streams here */
+static int mock_refill(void *feeder) { return 1; }           /* (test_stream models it) */
+#define R_REFILL mock_refill
+#endif

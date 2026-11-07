@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- **Varispeed on long samples:** a sample long enough to stream from the card (more than about a second) no longer
+  stops after its first second when its pad is started at a high speed: the last ~10 CTRL 3 positions before PTN,
+  chromatic notes from about +7 up, or PTN at a fast pattern tempo (issue #1). Roland loads the card data a voice
+  needs only after the voice's first blocks are made; faster than about 1.4x they ran out of it. The data is now
+  loaded when it's needed. Normal speed, OFF and slower speeds are unchanged.
+
 ## v2.11
 
 Fixes only. The version screen shows `2.11`. Output `sp404sx_up.bin` SHA-256
