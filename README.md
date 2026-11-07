@@ -6,8 +6,8 @@ way. It adds tape-style **varispeed** to every pad (pitch and tempo change toget
 slowing down a tape or a turntable) and a **chromatic mode** that turns a bank into a keyboard for one of its
 samples, playable from the pads and over MIDI.
 
-> **Current release: v2.11** (the version screen shows `2.11`), based on Roland's system 1.07.
-> Output file: `sp404sx_up.bin`, SHA-256 `a66d915701e90430fad1263ec63f8f1f7e5e0e441c9a5465d3139e5f877a52f4`.
+> **Current release: v2.12** (the version screen shows `2.12`), based on Roland's system 1.07.
+> Output file: `sp404sx_up.bin`, SHA-256 `a717922dc42cadd133f5f23719e112817bd3239bc18460e5407f6a049a6aeeb1`.
 
 ## What it adds
 

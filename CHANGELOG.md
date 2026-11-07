@@ -1,6 +1,9 @@
 # Changelog
 
-## Unreleased
+## v2.12
+
+Fixes only. The version screen shows `2.12`. Output `sp404sx_up.bin` SHA-256
+`a717922dc42cadd133f5f23719e112817bd3239bc18460e5407f6a049a6aeeb1`.
 
 - **Varispeed on long samples:** a sample long enough to stream from the card (more than about a second) no longer
   stops after its first second when its pad is started at a high speed: the last ~10 CTRL 3 positions before PTN,

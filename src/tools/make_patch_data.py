@@ -15,7 +15,7 @@ sys.path.insert(0, HERE)
 import sp404fw
 
 NAME = 'SP-404SX/A EXTRAfirmware'
-RELEASE = '2.11'
+RELEASE = '2.12'
 DATA = os.path.join(HERE, '..', '..', 'docs', 'extrafirmware-patch.js')
 
 
