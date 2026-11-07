@@ -582,3 +582,59 @@ Implementation (vari.c "chromatic mode"):
 - Checks: host tests; patch.py output identical to the build; the web patcher's code (patcher-core.js + patch
   data) run in JavaScriptCore (no Node on this machine; same checks as check_web_patch.js): official file
   accepted, result byte-identical with the release hash, patched file recognised, modified input refused.
+
+## Issue #1: long samples stop after their head at high speed (branch varispeed-stream-cutoff; take 2 works on hardware)
+- Report (v2.00, still on v2.10): varispeed in the last ~10 CTRL 3 positions before PTN (about 1.4x to 1.5x), or
+  chromatic around +7: a ~10 s sample plays about a second and stops. Only if the speed is set before the pad starts
+  (raising it during playback is fine), only long samples.
+- Card streaming, mapped (forward feeder vtable 0x0C0F5F18, the same methods in all 5 forward classes):
+  feeder +8 card chunks after the head, +12 chunks read, +16 cursor, +20 buffer the next refill writes,
+  +32 state (0 head, 1 / 2 card buffer 0 / 1, 3 tail), +36 next state, +0 / +4 end of buffer 0 / 1, +48 buffer 1's
+  first load pending, +68 head end. Head 64 KB in the pad's RAM head buffer; then two 24 KB card buffers in turn
+  (stereo 6,144 frames, mono 12,288). init slot 24 (0x0C0913A0, >= 3 chunks) reads chunk 1 into buffer 0, presets
+  both end pointers, sets +48 = 1 and +20 = 1; slot 32 (0x0C091464) loads buffer 1 (+48 = 0, +20 = 0); refill slot 16
+  (0x0C0912C8) reads the next chunk into buffer +20 and flips it, returns -1 when +8 <= 2.
+- Fill 0x0C0914B8 sets *flag after finishing a card buffer (only when +8 > 2). Entering a buffer whose end pointer
+  is behind: 0x0C084B9C and return 0 (the voice ends). Entering buffer 1 before its load: plays what it holds.
+- Queues, all run by the sample task (entry 0x0C0951B0, priority 1, 32 KB stack; event loop 0x0C0951E0):
+  refill 0x0C094968(voice) -> ring 0x0CCAF0F4, event 32 -> 0x0C094C6C -> 0x0C0943AC -> 0x0C0911B4 (+40 > 0: skip
+  once; else slot 16; on -1 the pad is released via 0x0C093DE4). Buffer 1 load 0x0C0949A4(voice) -> ring 0x0CCAF4F4,
+  event 4096 -> 0x0C094CEC -> 0x0C0943D8 -> slot 32. Loop order per pass: service (4), refills (32), loads (4096).
+  Voice = feeder +24 (voice objects 0x0CCAE0C8 + 24 * i).
+- Notes run in the sample task too: event 16 -> 0x0C08F83C -> note loop 0x0C08F708 -> play_pad -> 0x0C093FB8 ->
+  voice start 0x0C0963AC. The start renders 4 or 5 blocks of 4096 frames at once (player +0x140C4 = 4 or 5), blocks 1 and 2
+  with one flag; after block 2 it queues buffer 1's load (if +48 and the pad's info byte +20 == 0) and refills a
+  finished buffer itself (0x0C0911B4); after blocks 3..5 it queues refills (pad info +20 != 0: refills directly).
+  Nothing queued can run before the start returns.
+- Cause: a stereo start consumes 4 x 4096 x r frames. Stock (r = 1) stays inside head + buffer 0 (22,528 frames).
+  At r > 1.375 it passes buffer 0 and reads buffer 1 before its load; past head + 2 buffers it needs buffer 0 again,
+  whose refill is only queued, and fill ends the voice: knob 112..124 (1.38x .. 1.50x), after 28,672 frames
+  (0.65 s); mono only at chromatic speeds (> 2.75x). Once a note runs, the task keeps both buffers loaded, so raising
+  the speed later works. A second problem at > 1.5x stereo: a block can finish two buffers, and *flag (one bit per
+  call) queues only one refill.
+- Test build issue1 (SHA-256 0f6baca1..., MD5 e52dca63...) FAILED on hardware: long samples cut out after 1-2 s at
+  every varispeed, slower ones too. It called the sample task's queue drains (0x0C094CEC buffer-1 loads, 0x0C094C6C
+  refills) from inside vari_fill, before each Roland fill call, at any speed but normal. Roland never runs them
+  there, and they aren't safe there: every drain sets the interrupt mask to 15 around its dequeue (0x0C0EE8B4 ->
+  0x0C0EC858(15)) and then to 0 (0x0C0EE8C0 -> 0x0C0EC858(0)), not back to the caller's level; and the buffer-1
+  load (slot 32) runs 0x0C094E78 -> 0x0C094DF4 around its card read, which runs queued block fills (0x0C096F2C,
+  i.e. fill and vari_fill again, possibly for a voice already inside its fill). Which of these ended the notes
+  isn't proven; the host model had none of them, so it passed.
+- Playback refill, mapped: block fills run from queue 0x0C137930 (queued by the hand-off service 0x0C096914 via
+  0x0C094B3C, event 2048 -> 0x0C094DF4 -> 0x0C096F2C). After a flagged fill 0x0C096F2C refills directly:
+  0x0C0911B4(feeder) when player +16 == 0 (0x0C097012). Only the voice start (0x0C0962E4..) queues refills or loads.
+- Fix, take 2 (vari.c, voices faster than normal only; normal, OFF and slower run exactly the v2.11 path): after
+  each Roland fill call that flagged a finished buffer, clear *flag and refill it directly with 0x0C0911B4, the call
+  Roland's playback service makes after a flagged fill (stream_refill, led area). Nothing is left in *flag, so the
+  caller neither refills nor queues; a block that finishes two buffers refills both. Each of our fill calls asks for
+  < 4096 frames, so it crosses at most one buffer end. On a faster note's first fill with +48 set and +8 > 2: clear
+  +48 and refill, which loads buffer 1 (+20 = 1), as Roland does for pads it streams synchronously; the start then
+  doesn't queue that load. No drains, no queue, no interrupt-mask change. The reverse classes never set +48.
+- Space: cur_pad moved from the dump area to dev (dev 404 of 404 B), dump 1132 of 1132 B, led 192 of 196 B.
+- Host test test_stream models the head, both buffers, end pointers, the start's queues and its 4- or 5-block
+  burst, and the playback service's direct refill: v2.11 fails 175 of 628 cases (stereo from knob 112 with a 4-block
+  start), take 2 plays all 628 through, every frame from the right chunk, no buffer reloaded while in use, and at
+  normal speed and slower never refills on its own. Test build issue1b: SHA-256 6d6d0ba7..., MD5 46b28f27....
+- To check on hardware: a ~10 s stereo and a mono sample at knob 124, started cold, several times; chromatic +7 and
+  higher (+12, +24) on the same samples; PTN at a fast pattern tempo; reverse; loop on and off; normal speed and
+  OFF unchanged; several long samples at once (other voices keep streaming while one starts).
