@@ -647,3 +647,68 @@ Implementation (vari.c "chromatic mode"):
 - Checks: host tests; patch.py output identical to the build; the web patcher's code (patcher-core.js + patch
   data) run in JavaScriptCore (no Node on this machine; same checks as check_web_patch.js): official file
   accepted, result byte-identical with the release hash, patched file recognised, modified input refused.
+
+## Mute groups, test build A (branch pad-mute-group, SHA-256 83caf18b..., MD5 7ebda162...; works on hardware)
+- Owner's design: per pad a mute group 1..10 or none; a pad starting stops the other playing pads of its group in
+  any bank (choke). SHIFT + MARK on the play page opens a menu for the current pad (overlay on the main screen, not
+  a page): CTRL 1 OFF fully left, then 1..10, shown OFF / M 1 .. M10; CTRL 2 / 3 reserved (auto chop later); MARK
+  blinks; MARK closes it; the edited pad plays and keeps it; any other pad or button closes it. Saved on the card
+  and following the sample on copy / exchange: build B (one risky change per build).
+- Stock MARK (SP-404SX manual): sets a sample's start / end points while it plays (MARK lights); hold MARK + pad
+  to change them. No stock SHIFT + MARK function found; the play page handler passes MARK on regardless of SHIFT.
+- Buttons and LEDs: LED setter 0x0C0AD8F4(led, 0 off / 1 on / 2 blink). Button -> LED table at 0x0C138B74 (and a
+  copy at 0x0C138BD4), by button id: pads 1..12 -> 49..60, 13 -> 61, 14 (HOLD) -> 48, 15..19 -> 0..4, 25..30
+  (banks) -> 6..11, 34 / 35 (CANCEL / REMAIN) -> none, 36 -> 18, 39 (START/END/LEVEL) -> 22, 40 (TIME/BPM) -> 21.
+  Play page button handler 0x0C0C4C68: presses of ids 15..44 go through a jump table at 0x0C0C4EF4. Id 36 posts
+  {0xA4, 6, 0, 13, 1} on press and {..., 0} on release (0x0C08F244 -> sample task, queue 0x0C0928F8), the only
+  non-bank button reporting both: MARK, LED 18 (confirmed on hardware by build A). 37, 38, 41..43 look like
+  the effect buttons, 32 / 33 / 35 / 22 open pages 4 / 5 / 14 / 18.
+- Play page hooks: pev_stub -> mute_page_event (menu, then chr_page_event, then Roland's 0x0C0C5384, which sends
+  buttons to 0x0C0C4C68 and knobs to 0x0C0C51E8; the return value isn't used, a taken event returns 0);
+  pref_stub -> mute_page_refresh (chr_page_refresh, then the menu's text R_SHOWS and LED 18 = 2 while open);
+  chr_page_enter closes the menu. The opening / closing MARK press and its release are taken (Roland would start
+  or end marking with them). Choke: chr_play (every pad start) calls mute_choke before Roland's play_pad: other
+  playing pads of the group stop with chr_stop (Roland's stop sequence).
+- RAM: mute_st {g[120], open, pad, eat, txt[4]} in the Phones test page area (data only, after the chromatic texts).
+- Space: EXTRA entries may now list several vtable slots, one per method of a run of a test page's methods (each
+  slot pointed at the page's `return 0`; build.py checks every pointer into the run is one of them, all in test
+  vtables). The LED page's area now covers methods 0..5 (old `led` + `chre`), the Phones page's methods 0..6
+  (old `chrg`), and new areas: mutea = CPageTestVolume methods 0..6 (0x0C0CF1BC..0x0C0CF304; their pool is shared
+  only with the page's helpers 0x0C0CEFAC / 0x0C0CF030, called only by those methods: POOL_SPANS), muteb =
+  CPageTestSw methods 1..6 (0x0C0CE768..0x0C0CE834; helpers 0x0C0CE548 / 0x0C0CE608 and method 0 = chrp),
+  mutec = CPageTestMicExt methods 0..1. Use: mutea 308 / 328, muteb 184 / 204, mutec 48 / 68, led 384 / 404,
+  chrg 200 / 232. Still unclaimed: the dead tails of the Line, MicInt, Battery, Device and Completed pages.
+- Host test test_mute: opening (no current pad, MARK alone), all 128 CTRL 1 positions (monotonic, OFF only at the
+  left, every group, zones >= 10 positions), texts, knobs taken, refresh order, edited pad / other pad / other bank
+  / other button / MARK closing and release taking, page enter, choke across banks and kinds (panel, pattern, MIDI),
+  only playing pads stopped.
+
+## Mute groups, test build B (SHA-256 13eecd99..., MD5 f78c9276...; works on hardware)
+- Build A report: works as designed (menu, MARK blinking on LED 18, closing, choke).
+- Saving: MUTEGRP.BIN = "MUT1", 120 groups (the start of mute_st, written / read verbatim), 120 sample fingerprints
+  (pad_fp at the time of saving; 120 B on the stack, as varispeed's resync) = 244 B. Read after PAD_INFO is
+  (re)loaded (vari_need_load, with VARISPD.BIN and CHROMA.BIN); a missing / short file, another magic, a group
+  above 10 or a pad whose fingerprint differs: no group. Written 1 s after the last change (menu, cleared group,
+  copy / exchange), only with the card ready, under lock 14 like the others.
+- Sample changes at runtime: no fingerprint table of our own. tick_stub -> mute_tick, before chr_tick / vari_tick:
+  a pad with a group whose pad_fp differs from varispeed's stored fingerprint (vari_tab.e[p].fp, which varispeed's
+  resync updates in the same tick right after) lost its sample (delete, record over, import): group cleared.
+- Copy / exchange: xcopy_stub / xexch_stub -> mute_xop (params 60 / 61 read before the job, then vari_xop, which
+  runs Roland's job and moves the speeds); on success the destination gets the source's group, exchange swaps.
+  Groups are read before the job as a tick can run on the half-done PAD_INFO and clear the destination's group.
+- Space: the helper functions of the reclaimed CPageTestVolume / CPageTestSw methods, called only by those methods,
+  are reclaimed too (HELPER_BLOCKS, generalised from chrw's HELPER_BLOCK: the only branches into each block are the
+  listed ones, all from inside the page's methods span; nothing else points or loads into it): muted =
+  0x0C0CEFAC..0x0C0CF1BC (mute_load, mute_tick, the path; 496 / 528 B; callers in mutea), mutee =
+  0x0C0CE548..0x0C0CE720 (mute_xop, mute_save; 272 / 472 B; callers in chrp + muteb). mute_st 136 B (chrg 208 / 232).
+- Host test test_mute (saving part): boot with no file, write timing (not within a second, once after it), file
+  layout, reload, sample changed while away, delete / record over at runtime, copy, exchange, exchange of identical
+  samples, failed job, invalid pads, a tick during the copy, invalid files (magic, group > 10, short).
+
+## Mute groups, test build C (SHA-256 e8db260e..., MD5 045d8f01...; not yet on hardware)
+- Build B report: works as designed. Code review found one edge case: the MARK release owed to the menu (after the
+  press that opened or closed it) is taken by the play page hook; if it happened on another page (MARK held while
+  leaving the play page), the flag stayed set and swallowed the next ordinary MARK release on the play page, so
+  Roland could think MARK held (hold MARK + pad = start / end point editing). Fix: the flag is cleared on any MARK
+  press while the menu is closed (before the SHIFT check that may set it again) and on play page enter. test_mute
+  covers both.

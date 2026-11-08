@@ -90,6 +90,16 @@ static int chr_menu(struct page *p);
 static int chr_padkey(struct event *e);
 static unsigned char pad_fp(int pad);
 
+/* ------------------------------------------------------------------ mute groups (state) */
+#ifndef MUTE
+#define MUTE(n) __attribute__((noinline, section(".text.mute" #n)))   /* reclaimed factory test page methods (link.ld) */
+#endif
+/* "MUT1" and per pad its mute group (0 = none, 1..10): saved verbatim as the start of MUTEGRP.BIN; the SHIFT + MARK
+   menu: open, the pad it edits, a MARK release to take, display text; unsaved-change timer. */
+struct mute { u32 magic; unsigned char g[120], open, pad, eat; char txt[4]; volatile int dirty; };
+struct mute mute_st SECT(".mutedata");
+static void mute_choke(int pad);
+
 /* ------------------------------------------------------------------ speed + UI */
 #ifndef R_TEMPO
 #define R_TEMPO  ((int  (*)(void))0x0C0BAF24)   /* pattern tempo x100 (102.00 BPM = 10200); what stock PTN uses */
@@ -415,7 +425,8 @@ CHR(padkey) int chr_holdget(int id, int pad, getfn orig) {
     if (b >= 0) pad = chr_tab.b[b].src - 1;
     return orig(id, pad);
 }
-/* Play page event hook: SHIFT + TIME/BPM asks the TIME/BPM page that Roland is about to open for the menu. */
+/* Play page event hook (after the mute group menu's, mute_page_event): SHIFT + TIME/BPM asks the TIME/BPM page that
+   Roland is about to open for the menu. */
 typedef int (*evfn)(void *page, struct event *e);
 CHR(pageevent) int chr_page_event(void *page, struct event *e, evfn orig) {
     if (e->type == 0 && e->val) chr_st.want = e->id == BTN_BPM && R_HELD(BTN_SHIFT) && !FWDMODE;
@@ -428,6 +439,8 @@ CHR(pageenter) int chr_page_enter(void *page, pgfn orig) {
     int r = orig(page);
     chr_st.show = 1;
     chr_st.menu = 0;
+    mute_st.open = 0;
+    mute_st.eat = 0;                                /* a MARK release owed to the mute menu went elsewhere */
     return r;
 }
 CHR(pagerefres) int chr_page_refresh(void *page, pgfn orig) {
@@ -532,6 +545,7 @@ CHR(play) int chr_play(int kind, int pad, int vel) {
         /* else a panel-kind start with no key on a chromatic page: Roland restarting the source itself (e.g. MARK
            replays it from the new mark), so it keeps the note it is playing */
     }
+    mute_choke(pad);
     return R_PLAYPAD(kind, pad, vel);
 }
 /* Every pad release (replaces the pointer to Roland's 0x0C084B48). Releasing the key that sounds releases the
@@ -557,6 +571,85 @@ CHR(ratio) static u32 chr_ratio(int pad, u32 r) {
     if (k) r = ((r >> 2) * ((chr_semi[k] + UNITY) >> 1)) >> 13; /* r < 2^18, factor < 2^17 */
     r = o < 0 ? r >> -o : r << o;
     return r > V_MAX ? V_MAX : r;
+}
+
+/* ------------------------------------------------------------------ mute groups */
+/* A pad in a mute group 1..10 stops every other playing pad of its group, in any bank, when it starts (a choke).
+   SHIFT + MARK on the play page opens a menu over it for the current pad (the last pad played): CTRL 1 sets its
+   group, OFF fully left, then 1..10; the display shows OFF / M 1 .. M10 and MARK blinks. MARK closes it; the pad it
+   edits plays and keeps it open; any other pad or button closes it and does what it does. Groups are saved in
+   MUTEGRP.BIN (below). Roland's button -> LED table (0x0C138B74): MARK = button 36, LED 18. */
+#define BTN_MARK 36
+#define LED_MARK 18
+#ifndef R_LED
+#define R_LED ((void (*)(int led, int v))0x0C0AD8F4)   /* LED: 0 off, 1 on, 2 blink */
+#endif
+/* The menu's display and LED: the edited pad's group, MARK blinking. */
+MUTE(show) static void mute_show(void) {
+    char *t = mute_st.txt;
+    int g = mute_st.g[mute_st.pad];
+    const char *s = STR_OFF;
+    if (g) {                                        /* M 1 .. M10 */
+        t[0] = 'M'; t[1] = g >= 10 ? '1' : ' '; t[2] = (char)('0' + (g >= 10 ? g - 10 : g)); t[3] = 0;
+        s = t;
+    }
+    R_SHOWS(s, 1);
+    R_LED(LED_MARK, 2);
+}
+MUTE(close) static void mute_close(void) {
+    mute_st.open = 0;
+    R_LED(LED_MARK, 0);
+}
+/* An event while the menu is open: 1 = taken. Knobs belong to the menu (CTRL 1: OFF, then groups 1..10). MARK
+   closes it (its release taken too); the edited pad plays as usual; any other pad or button closes it first. */
+MUTE(menu) static int mute_menu_ev(struct event *e) {
+    int id = e->id;
+    if (e->type != 0) {
+        if (e->type == 1 && id == 0) {
+            unsigned char *gp = &mute_st.g[mute_st.pad], g = (unsigned char)(((e->val < 0 ? 0 : e->val) * 11) >> 7);
+            if (*gp != g) { *gp = g; mute_st.dirty = 1; }
+            mute_show();
+        }
+        return 1;
+    }
+    if (!e->val || id == BTN_SHIFT) return 0;       /* releases and SHIFT: Roland's */
+    if (id == BTN_MARK) { mute_close(); mute_st.eat = 1; return 1; }
+    if (id >= 1 && id <= 12 && R_GET(P_BANK, -1) * 12 + id - 1 == mute_st.pad) return 0;   /* the edited pad */
+    mute_close();
+    return 0;
+}
+/* Play page event hook (pev_stub), before chromatic mode's and Roland's. SHIFT + MARK opens the menu for the
+   current pad; the MARK press that opens or closes it and its release are taken (Roland would start or end setting
+   the pad's start / end points with them). */
+MUTE(ev) int mute_page_event(void *page, struct event *e, evfn orig) {
+    int pad;
+    if (e->type == 0 && e->id == BTN_MARK && !e->val && mute_st.eat) { mute_st.eat = 0; return 0; }
+    if (mute_st.open) {
+        if (mute_menu_ev(e)) return 0;
+    } else if (e->type == 0 && e->id == BTN_MARK && e->val) {
+        mute_st.eat = 0;                            /* a new press: a release still owed went to another page */
+        if (R_HELD(BTN_SHIFT) && (pad = cur_pad()) >= 0) {
+            mute_st.pad = (unsigned char)pad;
+            mute_st.open = 1;
+            mute_st.eat = 1;
+            mute_show();
+            return 0;
+        }
+    }
+    return chr_page_event(page, e, orig);
+}
+/* Play page refresh hook (pref_stub): Roland's refresh and C.ON, then the menu over them while it's open. */
+MUTE(refresh) int mute_page_refresh(void *page, pgfn orig) {
+    int r = chr_page_refresh(page, orig);
+    if (mute_st.open) mute_show();
+    return r;
+}
+/* Pad `pad` starts: stop the other pads of its group that are playing, with Roland's stop sequence. */
+MUTE(choke) static void mute_choke(int pad) {
+    int g = mute_st.g[pad], p;
+    if (!g) return;
+    for (p = 0; p < 120; p++)
+        if (p != pad && mute_st.g[p] == g && R_PLAYING(p)) chr_stop(p);
 }
 
 /* TIME/BPM page event hook (ev_stub): SHIFT + TIME/BPM (in the menu too: turns the bank on again, as from the
@@ -859,4 +952,66 @@ CHR(tick) int chr_tick(int ret, int ms) {
         if (chr_st.dirty > 1000 && R_CARDOK()) { chr_save(); chr_st.dirty = 0; }
     }
     return ret;
+}
+
+/* ------------------------------------------------------------------ mute groups: saving */
+/* MUTEGRP.BIN: "MUT1", per pad its group, then per pad the fingerprint of the sample the group was set with (244 B).
+   Read after PAD_INFO was (re)loaded, written 1 s after a change, like VARISPD.BIN and CHROMA.BIN. A pad whose sample
+   changes (deleted, recorded over, imported) loses its group; copy and exchange take the group along. */
+#define MUTE_MAGIC 0x4D555431u     /* "MUT1" */
+#define MUTE_HEAD  124             /* magic + groups: the start of mute_st */
+static const char mute_path[] __attribute__((section(".rodata.mute"))) = "/ROLAND/SP-404SX/SMPL/MUTEGRP.BIN";
+/* A missing or invalid file, or a pad whose sample isn't the one its group was set with: no group. */
+MUTE(load) static void mute_load(void) {
+    unsigned char fp[120];
+    int n = 0, fd, p;
+    R_LOCK(14);
+    fd = R_OPEN(mute_path, 1);
+    if (fd >= 0) { n = R_READ(fd, &mute_st, MUTE_HEAD); if (n == MUTE_HEAD) n += R_READ(fd, fp, 120); R_CLOSE(fd); }
+    R_UNLOCK(14);
+    for (p = 0; p < 120; p++)
+        if (n != MUTE_HEAD + 120 || mute_st.magic != MUTE_MAGIC || mute_st.g[p] > 10 || !fp[p] || fp[p] != pad_fp(p))
+            mute_st.g[p] = 0;
+    mute_st.magic = MUTE_MAGIC;
+    mute_st.dirty = 0;
+}
+MUTE(save) static void mute_save(void) {
+    unsigned char fp[120];
+    int p, fd;
+    for (p = 0; p < 120; p++) fp[p] = pad_fp(p);
+    R_LOCK(14);
+    fd = R_CREATE(mute_path);
+    if (fd >= 0) { R_WRITE(fd, &mute_st, MUTE_HEAD); R_WRITE(fd, fp, 120); R_CLOSE(fd); }
+    R_UNLOCK(14);
+}
+/* Every 100 ms (tick_stub), around chromatic mode's and varispeed's. A pad whose sample changed since varispeed last
+   looked (its fingerprint, which varispeed's resync then updates) loses its group. MUTEGRP.BIN is read with the other
+   files and written 1 s after a change. */
+MUTE(tick) int mute_tick(int ret, int ms) {
+    int load = vari_need_load, p;
+    if (!load)
+        for (p = 0; p < 120; p++)
+            if (mute_st.g[p] && pad_fp(p) != vari_tab.e[p].fp) { mute_st.g[p] = 0; mute_st.dirty = 1; }
+    ret = chr_tick(ret, ms);
+    if (load) { mute_load(); return ret; }
+    if (mute_st.dirty > 0) {
+        mute_st.dirty += ms;
+        if (mute_st.dirty > 1000 && R_CARDOK()) { mute_save(); mute_st.dirty = 0; }
+    }
+    return ret;
+}
+/* Roland's pad copy / exchange (xcopy_stub / xexch_stub), around varispeed's: the groups are read before the job and
+   set after it, as for the speeds (fingerprints can't tell identical samples apart). */
+MUTE(xop) int mute_xop(int (*fn)(void), int exch) {
+    int a = R_GET(60, -1), b = R_GET(61, -1), ga, gb, r;
+    if ((unsigned)a >= 120 || (unsigned)b >= 120) return vari_xop(fn, exch);
+    ga = mute_st.g[a];
+    gb = mute_st.g[b];
+    r = vari_xop(fn, exch);
+    if (!(r & 0xFF)) {
+        mute_st.g[b] = (unsigned char)ga;
+        if (exch) mute_st.g[a] = (unsigned char)gb;
+        mute_st.dirty = 1;
+    }
+    return r;
 }

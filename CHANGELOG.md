@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- **Mute groups:** each pad can be in mute group 1–10. A pad starting stops the other playing pads of its group,
+  in any bank, from pads, MIDI or patterns (choke). **SHIFT + MARK** on the main screen opens a menu for the last
+  pad played (MARK blinks): CTRL 1 sets the group (`OFF`, `M 1` … `M10`); MARK closes it, the edited pad plays,
+  any other pad or button closes it. Saved on the card (`MUTEGRP.BIN`), following the sample on copy / exchange;
+  delete, recording over or import clears it.
+
 ## v2.12
 
 Fixes only. The version screen shows `2.12`. Output `sp404sx_up.bin` SHA-256

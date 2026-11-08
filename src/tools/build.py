@@ -78,17 +78,19 @@ VERSION_TEXT = ((0x0C0F1142, 0x7030, 0x702B),   # add #48,r0 -> add #43,r0 (ones
                 (0x0C0F115A, 0x7030, 0x7031),   # add #48,r0 -> add #49,r0 (tens digit: '0' -> '1')
                 (0x0C0F116C, 0x7030, 0x7031))   # add #48,r0 -> add #49,r0 (hundreds digit: '1' -> '2')
 # More test page methods with no literal pool used from outside, no branch in, one vtable pointer:
-# (section, start, end, vtable slot, the same page's `return 0` method)
+# (section, start, end, vtable slot, the same page's `return 0` method). An area made of a page's consecutive
+# methods lists all their vtable slots (each method's own; every one is pointed at `return 0`).
 EXTRA = (('midi', 0x0C0CDDDC, 0x0C0CDEBC, 0x0C12FD24, 0x0C0CE074),     # CPageTestMidi method 2
-         ('led',  0x0C0CD838, 0x0C0CD8FC, 0x0C12F9A4, 0x0C0CD900),     # CPageTestLED method 5
+         ('led',  0x0C0CD768, 0x0C0CD8FC, (0x0C12F97C, 0x0C12F984, 0x0C12F98C, 0x0C12F994, 0x0C12F99C, 0x0C12F9A4),
+          0x0C0CD900),                                                  # CPageTestLED methods 0..5
          # chromatic mode: more methods of the factory test pages (unreachable since test mode is off)
          ('chra', 0x0C0CEEB0, 0x0C0CEF44, 0x0C13014C, 0x0C0CEF48),     # CPageTestVer method 5
          ('chrb', 0x0C0CD4D0, 0x0C0CD55C, 0x0C12F89C, 0x0C0CD740),     # CPageTestExtract method 2
          ('chrc', 0x0C0CD238, 0x0C0CD2C4, 0x0C12F6E4, 0x0C0CD2C8),     # CPageTestBattery method 5
          ('chrd', 0x0C0CE134, 0x0C0CE1A8, 0x0C12FE1C, 0x0C0CE3A4),     # CPageTestMute method 2
-         ('chre', 0x0C0CD7BC, 0x0C0CD828, 0x0C12F98C, 0x0C0CD900),     # CPageTestLED method 2
          ('chrf', 0x0C0CD1BC, 0x0C0CD228, 0x0C12F6CC, 0x0C0CD2C8),     # CPageTestBattery method 2
-         ('chrg', 0x0C0CE444, 0x0C0CE4A8, 0x0C12FEF8, 0x0C0CE4E0),     # CPageTestPhones method 2
+         ('chrg', 0x0C0CE3F8, 0x0C0CE4E0, (0x0C12FEE8, 0x0C12FEF0, 0x0C12FEF8, 0x0C12FF00, 0x0C12FF08, 0x0C12FF10,
+          0x0C12FF18), 0x0C0CE4E0),                                     # CPageTestPhones methods 0..6
          ('chrh', 0x0C0CDC88, 0x0C0CDCEC, 0x0C12FC30, 0x0C0CDD24),     # CPageTestMicInt method 2
          ('chri', 0x0C0CDB20, 0x0C0CDB84, 0x0C12FB44, 0x0C0CDBBC),     # CPageTestMicExt method 2
          ('chrj', 0x0C0CD9D0, 0x0C0CDA34, 0x0C12FA68, 0x0C0CDA6C),     # CPageTestLine method 2
@@ -102,20 +104,37 @@ EXTRA = (('midi', 0x0C0CDDDC, 0x0C0CDEBC, 0x0C12FD24, 0x0C0CE074),     # CPageTe
          ('chrx', 0x0C0CD56C, 0x0C0CD73C, 0x0C12F8B4, 0x0C0CD740),     # CPageTestExtract method 5
          ('chry', 0x0C0CDEE4, 0x0C0CE070, 0x0C12FD3C, 0x0C0CE074),     # CPageTestMidi method 5
          ('chrz', 0x0C0CE280, 0x0C0CE3A0, 0x0C12FE34, 0x0C0CE3A4),     # CPageTestMute method 5
+         # mute groups: whole runs of test page methods
+         ('mutea', 0x0C0CF1BC, 0x0C0CF304, (0x0C1301FC, 0x0C130204, 0x0C13020C, 0x0C130214, 0x0C13021C, 0x0C130224,
+          0x0C13022C), 0x0C0CF304),                                     # CPageTestVolume methods 0..6
+         ('muteb', 0x0C0CE768, 0x0C0CE834, (0x0C13004C, 0x0C130054, 0x0C13005C, 0x0C130064, 0x0C13006C, 0x0C130074),
+          0x0C0CE834),                                                  # CPageTestSw methods 1..6
+         ('mutec', 0x0C0CDADC, 0x0C0CDB20, (0x0C12FB34, 0x0C12FB3C), 0x0C0CDBBC),   # CPageTestMicExt methods 0..1
          # first methods that start right after a literal pool word instead of a nop / rts
          ('chrs', 0x0C0CD474, 0x0C0CD4BC, 0x0C12F88C, 0x0C0CD740),     # CPageTestExtract method 0
          ('chru', 0x0C0CDC20, 0x0C0CDC70, 0x0C12FC20, 0x0C0CDD24),     # CPageTestMicInt method 0
          ('chrv', 0x0C0CD974, 0x0C0CD9B0, 0x0C12FA58, 0x0C0CDA6C),     # CPageTestLine method 0
          # helper functions after the CPageTestSw constructor (0x0C0CE838..0x0C0CE85F, live, kept), called only by
-         # CPageTestVer methods; no vtable slot (see HELPER_BLOCK)
-         ('chrw', 0x0C0CE860, 0x0C0CEC34, None, None))
-# chrw: the only branches into it, all from CPageTestVer methods (span below: no constructor, reached only through
-# its vtable); 4 of them are inside chrl, which is replaced by our code.
-HELPER_BLOCK = ('chrw', (0x0C0CEC9E, 0x0C0CECA8, 0x0C0CECB4, 0x0C0CECB8, 0x0C0CED4C, 0x0C0CEE4C), (0x0C0CEC38, 0x0C0CEF48))
+         # CPageTestVer methods; no vtable slot (see HELPER_BLOCKS)
+         ('chrw', 0x0C0CE860, 0x0C0CEC34, None, None),
+         # mute groups: helper functions called only by CPageTestVolume / CPageTestSw methods (mutea / muteb)
+         ('muted', 0x0C0CEFAC, 0x0C0CF1BC, None, None),
+         ('mutee', 0x0C0CE548, 0x0C0CE720, None, None))
+# Helper blocks: (the only branches into the block, the span of test page methods they all come from (no constructor,
+# reached only through test vtables), the 4 bytes before the block or None for "after a pool word / rts / nop").
+# chrw: from CPageTestVer methods; 4 of them are inside chrl, which is replaced by our code. muted / mutee: from the
+# methods that are mutea / chrp + muteb.
+HELPER_BLOCKS = {'chrw': ((0x0C0CEC9E, 0x0C0CECA8, 0x0C0CECB4, 0x0C0CECB8, 0x0C0CED4C, 0x0C0CEE4C), (0x0C0CEC38, 0x0C0CEF48),
+                          bytes.fromhex('0c0b f920')),
+                 'muted': ((0x0C0CF290, 0x0C0CF2A0, 0x0C0CF2CC), (0x0C0CF1BC, 0x0C0CF304), None),
+                 'mutee': ((0x0C0CE75C, 0x0C0CE826), (0x0C0CE720, 0x0C0CE834), None)}
 # For these, constant loads into the area are allowed only from inside the span of that page's earlier methods.
 # The build checks that each span is dead like the area itself: no branch into it from outside, no pointer into it
 # except from a test page vtable, and no load of a test page vtable in it (a constructor, which runs at boot).
-POOL_SPANS = {'chrx': (0x0C0CD474, 0x0C0CD56C), 'chry': (0x0C0CDD88, 0x0C0CDEE4), 'chrz': (0x0C0CE0A0, 0x0C0CE280)}
+POOL_SPANS = {'chrx': (0x0C0CD474, 0x0C0CD56C), 'chry': (0x0C0CDD88, 0x0C0CDEE4), 'chrz': (0x0C0CE0A0, 0x0C0CE280),
+              # helpers called only by the page's methods (CPageTestVolume: 0x0C0CEFAC, 0x0C0CF030; CPageTestSw:
+              # 0x0C0CE548, 0x0C0CE608, then method 0 = chrp)
+              'mutea': (0x0C0CEFAC, 0x0C0CF1BC), 'muteb': (0x0C0CE548, 0x0C0CE768)}
 TEST_VTABLES = (0x0C12F6B0, 0x0C12F794, 0x0C1302E4, 0x0C12F880, 0x0C12F970, 0x0C12FA4C, 0x0C12FB28, 0x0C12FC14,
                 0x0C12FD08, 0x0C12FE00, 0x0C12FEDC, 0x0C130038, 0x0C130118, 0x0C1301F0)
 TEST_VT_AREA = (0x0C12F6B0, 0x0C130330)
@@ -273,6 +292,10 @@ def put32(buf, addr, old, new):
     assert struct.unpack('>I', buf[o:o + 4])[0] == old, f'{addr:#x}: expected {old:#x}'
     buf[o:o + 4] = struct.pack('>I', new)
 
+def slots_of(slot):
+    """An EXTRA entry's vtable slots: none (the helper block), one, or one per method of a run of methods."""
+    return () if slot is None else slot if isinstance(slot, tuple) else (slot,)
+
 def build(official):
     if hashlib.md5(official).hexdigest() != OFFICIAL_MD5:
         sys.exit('input is not the official SP-404SX system 1.07 sp404sx_up.bin (MD5 mismatch)')
@@ -311,17 +334,23 @@ def build(official):
     assert img[DEV_END - BASE:DEV_END - BASE + 8] == bytes.fromhex('e004 006b e000 006b'), 'next methods'
     ctor_loads = [a for vt in TEST_VTABLES for a, _ in const_loads_into_value(img, vt)]
     for n, lo, hi, slot, ret0 in EXTRA:
-        if slot is None:                                   # the helper block
-            hn, srcs, (s0, s1) = HELPER_BLOCK
+        if slot is None:                                   # a helper block
+            srcs, (s0, s1), before = HELPER_BLOCKS[n]
             br = branches_into(img, lo, hi)
-            assert n == hn and sorted(int(a, 16) for a, _ in br) == sorted(srcs), f'branches into {n}: {br}'
+            assert sorted(int(a, 16) for a, _ in br) == sorted(srcs), f'branches into {n}: {br}'
             assert all(s0 <= a < s1 for a in srcs) and not [a for a in ctor_loads if s0 <= a < s1], f'{n} callers'
             assert not branches_into(img, s0, s1), f'something branches into the callers of {n}'
             sp = [BASE + i for i in range(0, len(img) - 3, 4) if s0 <= struct.unpack('>I', img[i:i + 4])[0] < s1]
             assert all(TEST_VT_AREA[0] <= p < TEST_VT_AREA[1] for p in sp), f'pointers into the callers of {n}: {sp}'
             assert not const_loads_into(img, lo, hi, [(lo, hi)]), f'constant loads into {n}'
             assert not [i for i in range(0, len(img) - 3, 4) if lo <= struct.unpack('>I', img[i:i + 4])[0] < hi], f'pointers into {n}'
-            assert img[lo - BASE - 4:lo - BASE] == bytes.fromhex('0c0b f920') and img[lo - BASE:lo - BASE + 2] == bytes.fromhex('2f96'), f'{n} start'
+            if before is not None:
+                assert img[lo - BASE - 4:lo - BASE] == before and img[lo - BASE:lo - BASE + 2] == bytes.fromhex('2f96'), f'{n} start'
+            else:
+                assert img[lo - BASE:lo - BASE + 2] == bytes.fromhex('4f22') and (img[lo - BASE - 2:lo - BASE] in
+                    (bytes.fromhex('0009'), bytes.fromhex('006b')) or lo - 2 in literal_pools(img)), f'{n} start'
+                assert img[hi - BASE - 4:hi - BASE] == bytes.fromhex('006b 0009') and \
+                    img[hi - BASE:hi - BASE + 2] == bytes.fromhex('4f22'), f'{n} end'
             continue
         assert not branches_into(img, lo, hi), f'something branches into {n}'
         loads = const_loads_into(img, lo, hi, [(lo, hi)])
@@ -338,7 +367,9 @@ def build(official):
             assert img[hi - BASE - 2:hi - BASE] == bytes.fromhex('006b') or \
                 img[hi - BASE - 4:hi - BASE] == bytes.fromhex('006b 0009'), f'{n} end'
         ptr = [BASE + i for i in range(0, len(img) - 3, 4) if lo <= struct.unpack('>I', img[i:i + 4])[0] < hi]
-        assert ptr == [slot] and u32(img, slot) == lo, f'pointers into {n}: {[hex(p) for p in ptr]}'
+        ss = slots_of(slot)                                # only the methods' own vtable slots, the first at `lo`
+        assert ptr == sorted(ss) and u32(img, ss[0]) == lo and all(TEST_VT_AREA[0] <= s < TEST_VT_AREA[1] for s in ss), \
+            f'pointers into {n}: {[hex(p) for p in ptr]}'
         assert img[lo - BASE:lo - BASE + 2] == bytes.fromhex('4f22') and (img[lo - BASE - 2:lo - BASE] in
             (bytes.fromhex('0009'), bytes.fromhex('006b')) or lo - 2 in literal_pools(img)), f'{n} start'
         assert img[ret0 - BASE:ret0 - BASE + 4] == bytes.fromhex('e000 006b'), f'{n} return-0 method'
@@ -393,7 +424,7 @@ def build(official):
     put32(new, DEV_SLOT, DEV_METHOD, DEV_RET0)
     for n, lo, hi, slot, ret0 in EXTRA:
         new[lo - BASE:lo - BASE + len(extra[n])] = extra[n]
-        if slot is not None: put32(new, slot, lo, ret0)
+        for s in slots_of(slot): put32(new, s, u32(img, s), ret0)
     new[TEST_GATE - BASE:TEST_GATE - BASE + 2] = struct.pack('>H', TEST_GATE_NEW)
     assert img[LED_RANGE - BASE:LED_RANGE - BASE + 6] == LED_RANGE_OLD, 'TIME/BPM LED range check not found'
     new[LED_RANGE - BASE:LED_RANGE - BASE + 2] = struct.pack('>H', LED_RANGE_NEW)
@@ -475,7 +506,7 @@ def build(official):
                set(range(HELPER_CODE - BASE, HELPER_CODE - BASE + len(helper))) |
                {a - BASE + k for a in (LOAD_PTR, TICK_PTR, DEV_SLOT, REQ_PTR, PLAY_PTR, REL_PTR, PEV_SLOT, NOTE_PTR, GATE_PTR, GATE2_PTR, HOLD_PTR, HOLD2_PTR, PMASK_PTR, XCOPY_PTR, XEXCH_PTR, PEN_SLOT, PREF_SLOT) for k in range(4)} |
                set(range(DEV - BASE, DEV - BASE + len(dev))) |
-               {x - BASE for n, lo, hi, slot, ret0 in EXTRA for x in (*range(lo, lo + len(extra[n])), *(range(slot, slot + 4) if slot else ()))} | {TEST_GATE - BASE, TEST_GATE - BASE + 1, LED_RANGE - BASE + 1, REFRESH_RANGE - BASE + 1, LED_BLINK - BASE + 1} |
+               {x - BASE for n, lo, hi, slot, ret0 in EXTRA for x in (*range(lo, lo + len(extra[n])), *(x for s in slots_of(slot) for x in range(s, s + 4)))} | {TEST_GATE - BASE, TEST_GATE - BASE + 1, LED_RANGE - BASE + 1, REFRESH_RANGE - BASE + 1, LED_BLINK - BASE + 1} |
                {a - BASE + 1 for a, _, _ in VERSION_TEXT})
     assert set(diff) <= allowed, [hex(BASE + d) for d in diff if d not in allowed]
     info = dict(extra={n: len(b) for n, b in extra.items()}, dev=len(dev), cave=len(cave), dump=len(dump), diff=len(diff), rewritten=rewritten, seen=sorted(seen),
