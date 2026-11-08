@@ -131,7 +131,7 @@ tick_stub:
 .Lload_orig:    .long 0x0C08A68C
 .Lneed_load:    .long vari_need_load
 .Ltick_orig:    .long 0x0C08A700
-.Lc_tick:       .long chr_tick
+.Lc_tick:       .long mute_tick     /* then chr_tick, vari_tick */
         .global load_stub, tick_stub, persist_lits_end
 persist_lits_end:
 
@@ -229,7 +229,7 @@ pref_stub:                       /* play page refresh: Roland's refresh, then C.
         nop
         .balign 4
 chr_lits2:
-.Lc_pev:        .long chr_page_event
+.Lc_pev:        .long mute_page_event   /* then chr_page_event */
 .Lpev_orig:     .long 0x0C0C5384
 .Lc_note:       .long chr_note
 .Lnote_orig:    .long 0x0C089330
@@ -240,9 +240,9 @@ chr_lits2:
 .Lhold_orig:    .long 0x0C082B34
 .Lc_pen:        .long chr_page_enter
 .Lpen_orig:     .long 0x0C0C5250
-.Lc_pref:       .long chr_page_refresh
+.Lc_pref:       .long mute_page_refresh /* chr_page_refresh, then the mute menu */
 .Lpref_orig:    .long 0x0C0C53F4
-.Lc_xop:        .long vari_xop
+.Lc_xop:        .long mute_xop      /* around vari_xop */
 .Lxcopy_orig:   .long 0x0C087A64
 .Lxexch_orig:   .long 0x0C087DEC
 chr_lits2_end:

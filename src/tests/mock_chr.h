@@ -52,6 +52,10 @@ static unsigned mock_pmask[10];                              /* Roland: per bank
 static unsigned mock_pmask_fn(int b) { return mock_pmask[b]; }
 #define R_PMASK   mock_pmask_fn
 #define CHR(n)    __attribute__((noinline))
+#define MUTE(n)   __attribute__((noinline))
+static int mock_led[70];                                     /* Roland's LEDs: 0 off, 1 on, 2 blink */
+static void mock_led_fn(int led, int v) { if (led >= 0 && led < 70) mock_led[led] = v; }
+#define R_LED     mock_led_fn
 #ifndef R_REFILL                                             /* Roland's card refill: nothing streams here */
 static int mock_refill(void *feeder) { return 1; }           /* (test_stream models it) */
 #define R_REFILL mock_refill

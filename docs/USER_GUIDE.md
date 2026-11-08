@@ -115,6 +115,34 @@ chromatic.
 - The file is written at the same times Roland saves its own pad settings, and never while sampling or
   during card operations.
 
+## Mute groups
+
+Each pad can be in one of ten **mute groups**, or in none. When a pad of a group starts, every other pad of the
+same group that is playing stops (a "choke"), in any bank A–J, however it is started: pads, MIDI or pattern
+playback. Classic use: closed and open hi-hat in the same group.
+
+### The mute group menu (SHIFT + MARK)
+
+Play a pad, then press **SHIFT + MARK** on the main screen: the menu opens for that pad and **MARK blinks**.
+
+| Control | Sets |
+|---|---|
+| CTRL 1 | The pad's group: fully left `OFF` (no group), then `M 1` … `M10` turning right |
+| CTRL 2, CTRL 3 | Nothing yet (reserved); the effects don't move while the menu is open |
+
+- **MARK** closes the menu.
+- **The pad you're editing** plays as usual and the menu stays open.
+- **Any other pad or button** closes the menu and then does what it normally does.
+- MARK on its own still sets start / end points as on the stock SP-404SX/A.
+
+### Saving
+
+Groups are saved on the card in `/ROLAND/SP-404SX/SMPL/MUTEGRP.BIN`, about a second after a change, and come
+back at power-on. Like the speeds, a group follows the **sample**: **copy** gives the new pad the same group,
+**exchange** swaps the groups with the samples, and **deleting, recording over or importing** onto a pad clears
+its group. With another card, or samples changed on a computer, a pad whose sample isn't the one its group was
+set with comes up with no group.
+
 ## What else changes
 
 - Roland's **factory hardware-test mode** (the technician test screens started from a test file on the card
