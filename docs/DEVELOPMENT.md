@@ -11,7 +11,7 @@ SP-404SX's own updater copies it to flash. EXTRAfirmware adds code to that image
 | `0x0C080400`–`0x0C0807FF` | Free 1 KB above vector 255: entry stubs, TIME/BPM page UI, RAM (per-pad speeds, per-voice resampler state) |
 | `0x0C089EF4`–`0x0C08A35F` | Roland's hidden PAD_INFO debug dump (reclaimed): resampler and fill wrapper |
 | `0x0C0EB5A0`, `0x0C0A9558` | Two unreferenced Roland routines: persistence code; ratio table and file path |
-| Factory test pages | Test mode disabled at boot; methods of CPageTestDevice / Midi / LED reused for varispeed, methods of most other test pages (and the helper block after the CPageTestSw constructor) for chromatic mode; each slot pointed at its page's `return 0` method |
+| Factory test pages | Test mode disabled at boot; methods of CPageTestDevice / Midi / LED reused for varispeed, methods of most other test pages (and the helper block after the CPageTestSw constructor) for chromatic mode, mute groups and pan (runs of a page's methods, and helper functions called only by them); each slot pointed at its page's `return 0` method |
 | CPageSmplEdit (TIME/BPM page) | Event and display hooks; light and refresh mode ranges include the CTRL 3 view |
 | 10 CSmplCharge vtables | `fill()` wrapped: asks Roland's fill for `ratio ×` the frames and resamples them (linear interpolation) |
 | Version text (`0x0C0F1142`, `0x0C0F115A`, `0x0C0F116C`) | Version screen shows `2.12` |
@@ -22,6 +22,13 @@ SP-404SX's own updater copies it to flash. EXTRAfirmware adds code to that image
 | Note handler literal, MIDI gate literals | Chromatic MIDI channels; MIDI notes play and start resampling at `RDY` / `REC` |
 | HOLD's GATE lookup literal | HOLD latches every key of a chromatic bank |
 | TIME/BPM LED (`0x0C0CBF12`) | TIME/BPM blinks in the chromatic menu |
+| CPagePlay event / refresh stubs (retargeted) | Mute groups: SHIFT + MARK menu on the play page, MARK blinking |
+| Pad start pointer (chromatic hook) | Mute groups: a pad starting stops the other pads of its group |
+| CPageSmplEdit event stub (retargeted) | Pan: SHIFT + START/END/LEVEL menu (TIME/BPM page mode 10) |
+| CPageSmplEdit enter / refresh slots (`0x0C12F404`, `0x0C12F42C`) | Pan: START/END/LEVEL blinks, TIME/BPM off in the pan menu |
+| `fill()` wrapper stubs (retargeted) | Pan: the far channel turned down after varispeed (`pan_fill`) |
+| Voice start literals (`0x0C0942A4`, `0x0C0945C0`, `0x0C09468C`) | Pan: a panned mono pad starts as a two-channel voice |
+| 100 ms tick, copy / exchange stubs (retargeted) | `MUTEGRP.BIN` and `PAN.BIN` saved and following the sample |
 
 `src/tools/build.py` documents every patch site; `docs/DEV_NOTES.md` has the reverse-engineering log.
 

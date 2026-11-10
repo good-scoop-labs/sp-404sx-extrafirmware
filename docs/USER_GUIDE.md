@@ -111,7 +111,8 @@ chromatic.
   - **Exchange:** each speed moves with its sample.
   - **Delete, new recording, resampling or import onto a pad:** that pad goes back to normal speed.
   - **Editing marks, level, loop or Time Modify:** the speed is kept.
-- Each SD card has its own `VARISPD.BIN`, so speeds go with the card.
+- Each SD card has its own `VARISPD.BIN`, so speeds go with the card. Mute groups (`MUTEGRP.BIN`) and pans
+  (`PAN.BIN`) are saved and follow the sample the same way.
 - The file is written at the same times Roland saves its own pad settings, and never while sampling or
   during card operations.
 
@@ -142,6 +143,39 @@ back at power-on. Like the speeds, a group follows the **sample**: **copy** give
 **exchange** swaps the groups with the samples, and **deleting, recording over or importing** onto a pad clears
 its group. With another card, or samples changed on a computer, a pad whose sample isn't the one its group was
 set with comes up with no group.
+
+## Pan
+
+Each pad has its own **pan**. Play a pad, then press **SHIFT + START/END/LEVEL**: a pan menu opens for that pad and
+**START/END/LEVEL blinks** (TIME/BPM is off). It opens from the main screen and from anywhere on the TIME/BPM page,
+including the chromatic menu. In FWD mode, SHIFT + START/END/LEVEL stays Roland's BWD.
+
+| Control | Sets |
+|---|---|
+| CTRL 3 | The pad's pan: fully left `L50`, centre `C` (with a small dead zone), fully right `R50` |
+| CTRL 1, CTRL 2 | Nothing |
+
+The display shows `L50` … `L 1`, `C`, `R 1` … `R50`. Opening the menu shows the stored value; it only changes when
+you turn CTRL 3.
+
+- **START/END/LEVEL** closes the menu for the main screen.
+- **The pad you're editing** plays and the menu stays open; so does a key of a chromatic bank.
+- **Any other pad or button** closes the menu and does what it normally does.
+- **SHIFT + TIME/BPM** switches to the chromatic menu, and SHIFT + START/END/LEVEL there comes back.
+
+How it sounds:
+
+- **Balance:** panned left, the right side goes down (silent at `L50`) and the left side stays as it is; panned right,
+  the mirror. Nothing gets louder, so panning never clips.
+- **`C` is untouched:** a pad at `C` plays bit-for-bit as on the stock SP-404SX/A.
+- **Stereo and mono pads:** a mono pad that is panned when it starts plays as a two-channel voice. If you change a
+  mono pad's pan while it plays, the change applies from its next start.
+- **Everywhere the pad plays:** pads, MIDI, pattern playback and resampling (the recording is panned), together with
+  varispeed, Time Modify, reverse and loop. The keys of a chromatic bank use the source pad's pan.
+
+Pans are saved on the card in `/ROLAND/SP-404SX/SMPL/PAN.BIN`, about a second after a change, and come back at
+power-on. Like the speeds, a pan follows the **sample**: **copy** gives the new pad the same pan, **exchange** swaps
+them with the samples, and **deleting, recording over or importing** onto a pad sets it back to `C`.
 
 ## What else changes
 

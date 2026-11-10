@@ -84,8 +84,8 @@ dump_ok:
 
         .balign 4
 .Lc_disp:        .long vari_display
-.Lc_ev:          .long vari_ev
-.Lc_fill:        .long vari_fill
+.Lc_ev:          .long pan_event     /* the pan menu, then vari_ev */
+.Lc_fill:        .long pan_fill      /* vari_fill, then the pad's pan */
 .Ldisp_back:     .long 0x0C0CB5E0
 .Lev_orig:       .long 0x0C0CC078
 .Lfill_fwd_orig: .long 0x0C0914B8
@@ -242,10 +242,67 @@ chr_lits2:
 .Lpen_orig:     .long 0x0C0C5250
 .Lc_pref:       .long mute_page_refresh /* chr_page_refresh, then the mute menu */
 .Lpref_orig:    .long 0x0C0C53F4
-.Lc_xop:        .long mute_xop      /* around vari_xop */
+.Lc_xop:        .long vari_xop      /* speed, mute group and pan follow the sample */
 .Lxcopy_orig:   .long 0x0C087A64
 .Lxexch_orig:   .long 0x0C087DEC
 chr_lits2_end:
         .global req_stub, play_stub, rel_stub, pev_stub, note_stub, gate_stub, gate2_stub, hold_stub, pen_stub, pref_stub
         .global xcopy_stub, xexch_stub
         .global chr_lits, chr_lits_end, chr_lits2, chr_lits2_end
+
+/* ---- pan: TIME/BPM page (CPageSmplEdit) enter and refresh, page in r4: Roland's method, which draws the display and
+   then the LEDs, then pan_led(page, method) fixes the LEDs in the pan menu */
+        .section .text.panstubs,"ax"
+        .balign 2
+pan_enter_stub:
+        mov.l   .Lpan_enter_orig,r5
+        mov.l   .Lc_pan_led,r0
+        bra     7f
+        nop
+pan_refresh_stub:
+        mov.l   .Lpan_refresh_orig,r5
+        mov.l   .Lc_pan_led,r0
+7:      sts.l   pr,@-r15
+        sts.l   mach,@-r15
+        sts.l   macl,@-r15
+        jsr     @r0
+        nop
+        lds.l   @r15+,macl
+        lds.l   @r15+,mach
+        lds.l   @r15+,pr
+        rts
+        nop
+/* ---- pan: voice start (Roland's 0x0C0963AC through its three literals): player r4, channels r5, pad r6, feeder r7,
+   one more argument on the stack. r5 = pan_channels(r5, r6) (a panned mono pad: 2), everything else as it came, then
+   Roland's start. */
+        .balign 2
+vstart_stub:
+        sts.l   pr,@-r15
+        sts.l   mach,@-r15
+        sts.l   macl,@-r15
+        mov.l   r4,@-r15
+        mov.l   r6,@-r15
+        mov.l   r7,@-r15
+        mov     r5,r4
+        mov.l   .Lc_pan_ch,r0
+        jsr     @r0
+        mov     r6,r5
+        mov     r0,r5
+        mov.l   @r15+,r7
+        mov.l   @r15+,r6
+        mov.l   @r15+,r4
+        lds.l   @r15+,macl
+        lds.l   @r15+,mach
+        lds.l   @r15+,pr
+        mov.l   .Lvstart_orig,r0
+        jmp     @r0
+        nop
+        .balign 4
+pan_lits:
+.Lc_pan_led:        .long pan_led
+.Lpan_enter_orig:   .long 0x0C0CBF58
+.Lpan_refresh_orig: .long 0x0C0CC0D8
+.Lc_pan_ch:         .long pan_channels
+.Lvstart_orig:      .long 0x0C0963AC
+pan_lits_end:
+        .global pan_enter_stub, pan_refresh_stub, vstart_stub, pan_lits, pan_lits_end

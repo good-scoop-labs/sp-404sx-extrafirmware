@@ -229,6 +229,8 @@ Sync Type, Original BPM, Modify BPM. No spare byte → varispeed needs its own s
 ## Build 11 (test11, MD5 4000340f464174bb2894e6671628888c) — TIME/BPM LED
 - Tester report: CTRL 3 turned the TIME/BPM light off. LED update 0x0C0CBEFC (called from the page refresh 0x0C0CC0D8 and
   0x0C0CBFD0): mode 1..4 -> LED 21 on; mode 5..7 -> LED 22 (TIME/BPM) on; else both off -> our mode 8 = off.
+  (Corrected in the pan work: the ids are the other way round. Mode 1..4 -> LED 22 = START/END/LEVEL on, LED 21 off;
+  mode 5..7 -> LED 21 = TIME/BPM on, LED 22 off; Roland's button -> LED table 0x0C138B74: 39 -> 22, 40 -> 21.)
   Patch 0x0C0CBF0C `mov #6,r4` -> `mov #7,r4` (modes 5..8). One byte vs test 10. LED set = 0x0C0AD8F4(id, on).
 
 ## Full review (build 12, test12 MD5 878d193fe1be766c5fdb18396fe8e71a)
@@ -712,3 +714,89 @@ Implementation (vari.c "chromatic mode"):
   Roland could think MARK held (hold MARK + pad = start / end point editing). Fix: the flag is cleared on any MARK
   press while the menu is closed (before the SHIFT check that may set it again) and on play page enter. test_mute
   covers both.
+
+## Pan, test build A (branch per-pad-pan, SHA-256 7fe60b73..., MD5 6521db94...; works on hardware, no sound by design)
+- Owner's brief: per-pad pan, SHIFT + START/END/LEVEL menu (TIME/BPM page mode 10), CTRL 3 L50 .. C .. R50, saved
+  as PAN.BIN following the sample; balance law (centre bit-exact, attenuate the far side, no boost). Staged: A =
+  menu / LEDs / saving (no sound change), B = stereo pads, C = mono pads.
+- START/END/LEVEL = button 39. Play page (jump table 0x0C0C4EF4 -> 0x0C0C50CE): in FWD mode with SHIFT it is BWD
+  (posts control 54; 40 posts 55 = FWD); otherwise SHIFT isn't looked at: if 0x0C0903D4(pad) or 0x0C0F1A34(),
+  R_SETPAGE slot 6 = CPageSmplEdit (0x0C0C5196), whose enter (0x0C0CBF58) picks mode 1 if 39 is held, 5 if 40.
+- CPageSmplEdit buttons: jump table 0x0C0CB7B8 by id. 39 -> 0x0C0CB888: modes 1..4 leave for the play page,
+  any other mode (5..10) shows text 0x0C12F3F4 and sets mode 1 (so the pan menu takes 39 itself). 40 ->
+  0x0C0CB8A0: modes 5..7 leave, others -> mode 6. With CANCEL held, 39 is dropped. Pads 1..12 -> 0x0C0CB820:
+  @(12,page) == 1 -> leave; pad == the page's pad @(8,page) (R_GET(52) at enter) -> stays (the note plays through
+  the note path); another pad -> R_SETPAGE(page, 1). Independent of the mode. Knobs (0x0C0CC078): modes 1..4 ->
+  0x0C0CB9CC, 5..7 -> 0x0C0CBB7C, others dropped.
+- LED routine 0x0C0CBEFC: modes 1..4 LED 21 = 0, 22 = 1; 5..8 (range patched) 21 = 1, 22 = 0; else 21 = 2 (v2.11
+  blink, the `e415` in the jsr's delay slot = LED 21 = TIME/BPM), 22 = 0; then MARK's LED 18 (0x0C0D13B8), others,
+  HOLD's 48. Its two callers (refresh 0x0C0CC110, enter 0x0C0CBFD0) use bsr, out of reach of our areas, so the page's
+  enter / refresh vtable slots (0x0C12F404 -> 0x0C0CBF58, 0x0C12F42C -> 0x0C0CC0D8; both use only r4) go to
+  pan_enter_stub / pan_refresh_stub -> pan_led: Roland's method, then in the pan menu only LED 21 = 0, LED 22 = 2.
+- Mono / Level (for builds B / C): the mono copy (0x0C09066C) writes only the L block; the voice start passes the
+  channel count (PAD_INFO +22) as r5 to 0x0C0963AC, which hands 1 or 2 block pointers to 0x0C08EE9C, which picks the
+  mono or stereo on-chip routing tables by it. Level (param 41) is only stored (0x0C08B16E) and isn't applied by any
+  CPU stage (Time Modify Copy 0x0C08D930 is a plain copy); no per-voice gain found in the WSP writes (0x0C0896A8 is
+  one global block). So: pan = gain in vari_fill; a panned mono pad is started as a 2-channel voice (r5 = 2 at the
+  three voice start literals 0x0C0942A4 / 0x0C0945C0 / 0x0C09468C, five call sites) with the R block made from L.
+- Pan menu: mode 10 shares chromatic mode's state (chr_st.want 1 = chromatic / 2 = pan, chr_st.menu 1 / 2, mpad);
+  chr_page_event flags SHIFT + 39 for the page Roland opens; chr_menu (the display hook) opens / draws it, and a mode
+  10 left over with the menu closed falls back to mode 1; ev_stub -> pan_event (SHIFT + 39, the pan menu) ->
+  vari_ev. Knob 0..127 -> pan: 62 positions each side of the 62..65 detent, (n * 50 + 61) / 62 as
+  ((n * 50 + 61) * 1057) >> 16 (exact for n = 1..62).
+- Saving: pan_tab {"PAN1", s8 v[120], dirty} like mute_st's start; one table-driven load / save for MUTEGRP.BIN and
+  PAN.BIN (magic, 120 values, 120 fingerprints = 244 B; a value outside its range or a pad whose fingerprint
+  differs: 0); one check loop in the tick against varispeed's fingerprints; vari_xop moves speed, group and pan.
+- Reorganised for space, same behaviour (all existing host tests unchanged): one card file helper (file_io) for
+  CHROMA.BIN / MUTEGRP.BIN / PAN.BIN, one copy / exchange function (vari_xop; mute_xop kept as its alias), one text
+  helper (show_num: M 1 .. M10, C 1 .. C16, o-2 .. o 2, L50 .. R50), one save timer (due(): the timer restarts
+  before the write, so a change made during it is saved next time), the mute and pan menus' event wrapper and
+  handler merged. Slack 40 -> 252 B.
+- Space: the Line, Battery, MicInt, MicExt and Device test page runs merged with the chromatic areas in them
+  (chrv / chrf / chru / chri / chrm cover each page's methods); new helper block pand = 0x0C0CF34C..0x0C0CF49C, two
+  helpers of CPageTestDevice method 5 (dev), called from it at 12 listed sites (an earlier scan of mine wrongly
+  called the second one unreferenced; the build check caught it); helper blocks may end on rts/n. Placement keeps
+  every section where it was unless it grew. Slack left: 252 B.
+- Host test test_pan (53 checks): opening from the play page and TIME/BPM page modes 1..9, not in FWD mode, not
+  without a current pad; all 128 CTRL 3 positions (ends, detent, symmetric, every value, texts); no jump on open;
+  LEDs in every mode; every way of closing incl. chromatic keys and switching to / from the chromatic menu;
+  PAN.BIN missing / short / bad magic / out of range / reload / sample changed / delete / re-record / copy /
+  exchange incl. identical samples / failed copy.
+
+## Pan, test build B (SHA-256 aaf6e79f..., MD5 cbc4f791...; works on hardware)
+- Build A report: menu, LEDs, saving and the reorganised features work; the sound stays centred (no audio in A).
+- Sound, stereo pads: fill_fwd / fill_rev -> pan_fill (in place of vari_fill): vari_fill unchanged (the main area is
+  byte for byte v2.12's), then the pad's pan on the *frames it made: pan 0, a pad number >= 120 or PAD_INFO +22 != 2
+  (mono) -> untouched; else the far channel (R for L pans, L for R) x (50 - |pan|) * 655 >> 15 (muls.w), the near one
+  untouched. One extra call level on the fill path; pan_fill is a leaf apart from vari_fill.
+- Space: the dead Ver / Mute methods next to our areas are merged into them as runs of a page's methods, with the
+  existing checks (their references, from chra / chrd / chrz, become internal): chrl = Ver m0..m1, chra = Ver
+  m4..m5, chrd = Mute m0..m5 (old chrd + chrn + chrz; chrz's POOL_SPANS entry dropped). Ver m2 / m3 untouched. The
+  standard start check also accepts an area whose first method only returns (rts/n, Ver m4). Slack 560 B.
+- Host test test_pan, sound part: centre bit-exact against vari_fill (normal speed and varispeed), L50 / R50,
+  L25 / R 1 exact gains, no overflow, mono untouched, end of sample (only the frames made), pad out of range.
+- To check on hardware: stereo pads at L50 / L25 / C / R25 / R50; with varispeed, Time Modify, reverse, loop; long
+  streamed samples; a chromatic bank with a panned source; pattern playback; resampling; many voices + effects.
+
+## Pan, test builds C1 / C2 (C1 SHA-256 a54e86e8..., MD5 9a90727b...; C2 SHA-256 3f1b726f..., MD5 a520ad09...;
+## C1 works on hardware, kept)
+- Build B report: stereo pan works as designed in every case of its checklist.
+- Mono pads: Roland's voice start 0x0C0963AC (player r4, channels r5, pad r6, feeder r7, one stack argument; it stores
+  r5 at player +4 and hands 1 or 2 block pointers to 0x0C08EE9C, which picks the mono or stereo routing by it) is
+  called through three literals (0x0C0942A4 <- 0x0C094046 / 0x0C0941D2, 0x0C0945C0 <- 0x0C09430C / 0x0C0944E0,
+  0x0C09468C <- 0x0C094632), all -> vstart_stub: saves pr / mach / macl / r4 / r6 / r7, r5 = pan_channels(r5, r6)
+  (2 for a mono pad with pan != 0), restores, jmp to Roland's start (stack argument untouched). build.py checks the
+  three literals are the only references to 0x0C0963AC, nothing branches to it, each is loaded only at its sites.
+- pan_fill, mono pad: only if the voice was started as 2 channels (voice object 0x0CCAE0C8 + 24 * vi, +8 player,
+  player +4 == 2): R made from L (Roland's mono copy writes only L): near side x MONO_TRIM, far side x MONO_TRIM x
+  (50 - |pan|) * 655 >> 15; at pan 0 both = the mono signal. A 1-channel voice is untouched (a mono pad at C plays
+  as stock; one panned while it plays changes from its next start).
+- C1: MONO_TRIM = unity; C2: 23170 (-3 dB). The WSP's level for a mono voice vs a stereo voice's channels isn't
+  known from the code: the owner compares C -> L 1 on a mono pad in both and the level-matched one stays.
+- Space: pan_channels in chrl; chr_menu_ev / chr_gate moved into chrd (Mute run). Slack 388 B.
+- Host test test_pan, mono part (run with both trims): pan_channels; 1-channel voice untouched; L50 / R50 (with
+  varispeed) / L25 / R 1 / started panned now at C; end of sample.
+- To check on hardware (both): mono C -> L 1 level (choose C1 / C2); mono L50 / L25 / C / R25 / R50; with varispeed,
+  Time Modify, reverse, loop; long streamed mono samples; chromatic keys of a panned mono source; pattern playback;
+  resampling; many panned mono voices + effects (polyphony, dropouts).
+- Build C report: C1 (mono near side at unity) works well, no complaints; kept as the default (MONO_TRIM 32768).

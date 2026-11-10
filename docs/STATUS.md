@@ -5,6 +5,19 @@ version screen (one byte). Release v2.11 = the last fix test build plus the `2.1
 test build v2.10c (byte-identical).
 Release v2.00 = internal build 13 plus the `2.00` version screen. The SP-404SX and SP-404A run the same firmware, so this applies to both.
 
+## Unreleased (mute groups, pan)
+
+Confirmed on hardware:
+- Mute groups (test builds mute A, B, C): SHIFT + MARK menu, MARK blinking (MARK = button 36, LED 18), CTRL 1
+  `OFF` / `M 1` … `M10`, every way of closing, choke across banks / MIDI / patterns, `MUTEGRP.BIN` saved and
+  loaded, groups following copy / exchange and cleared by delete / recording over; MARK not left "held" after
+  leaving the main screen with MARK down (build C).
+- Pan (test builds pan A, B, C1): SHIFT + START/END/LEVEL menu from the main screen, every TIME/BPM page view and
+  the chromatic menu (not in FWD mode), START/END/LEVEL blinking, CTRL 3 `L50` … `C` … `R50`, every way of closing,
+  `PAN.BIN` saved and following the sample; the reorganised saving / copy / exchange of varispeed, chromatic mode and
+  mute groups; stereo pads panned (B) and mono pads panned as two-channel voices at unity (C1, chosen over the
+  −3 dB variant C2).
+
 ## v2.12
 
 Confirmed on hardware (test build v2.11-issue1b):
