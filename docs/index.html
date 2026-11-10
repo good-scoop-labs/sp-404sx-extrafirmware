@@ -62,7 +62,7 @@
 <main>
   <header>
     <h1>SP-404SX/A EXTRAfirmware</h1>
-    <p>Tape-style varispeed for every pad and a chromatic keyboard mode (pads and MIDI) on the Roland SP-404SX and SP-404A (same firmware, works the same on both).</p>
+    <p>Tape-style varispeed for every pad, a chromatic keyboard mode (pads and MIDI), mute groups and per-pad pan on the Roland SP-404SX and SP-404A (same firmware, works the same on both).</p>
     <span class="badge" id="badge">Release &hellip;</span>
   </header>
 
@@ -94,7 +94,7 @@
       <li>The display shows <code>UPd</code> and then <code>Fin</code> after about ten seconds. Never power off while it says <code>UPd</code>.</li>
       <li>Power off, take out the card and delete <code>sp404sx_up.bin</code> from it on your computer (otherwise it updates again at every power-on), then put the card back in the SP-404SX/A.</li>
     </ol>
-    <p class="muted">To check the install, hold MARK while powering on: the display shows <code>2.12</code> (stock shows 1.07). To go back to stock, install Roland&rsquo;s original <code>sp404sx_up.bin</code> the same way.</p>
+    <p class="muted">To check the install, hold MARK while powering on: the display shows <code>2.20</code> (stock shows 1.07). To go back to stock, install Roland&rsquo;s original <code>sp404sx_up.bin</code> the same way.</p>
   </section>
 
   <section>
@@ -105,6 +105,8 @@
       <li>Works together with Time Modify. Moving CTRL&nbsp;2 resets varispeed, the same way it resets Time Modify.</li>
       <li>Speeds are saved on the card (<code>VARISPD.BIN</code>) and follow the sample when you copy or exchange pads.</li>
       <li><strong>Chromatic mode:</strong> play a pad, press SHIFT&nbsp;+&nbsp;TIME/BPM, and its bank becomes a keyboard for it (pad&nbsp;1 = its own pitch, +1 semitone per pad). CTRL&nbsp;1 sets the bank&rsquo;s MIDI channel (middle&nbsp;C = its own pitch), CTRL&nbsp;3 the octave. Several banks at once; works while resampling, so you can record melodies.</li>
+      <li><strong>Mute groups:</strong> play a pad, press SHIFT&nbsp;+&nbsp;MARK, and CTRL&nbsp;1 puts it in mute group 1&ndash;10. A pad starting stops the other playing pads of its group, in any bank (choke). Saved on the card (<code>MUTEGRP.BIN</code>).</li>
+      <li><strong>Pan:</strong> play a pad, press SHIFT&nbsp;+&nbsp;START/END/LEVEL, and CTRL&nbsp;3 pans it from L50 through C to R50, for stereo and mono pads. Pads at C play as stock. Saved on the card (<code>PAN.BIN</code>).</li>
       <li>Roland&rsquo;s factory hardware-test mode is removed to make room. Nothing else changes.</li>
     </ul>
   </section>

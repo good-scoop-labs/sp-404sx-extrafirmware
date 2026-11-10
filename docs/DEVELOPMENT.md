@@ -14,7 +14,7 @@ SP-404SX's own updater copies it to flash. EXTRAfirmware adds code to that image
 | Factory test pages | Test mode disabled at boot; methods of CPageTestDevice / Midi / LED reused for varispeed, methods of most other test pages (and the helper block after the CPageTestSw constructor) for chromatic mode, mute groups and pan (runs of a page's methods, and helper functions called only by them); each slot pointed at its page's `return 0` method |
 | CPageSmplEdit (TIME/BPM page) | Event and display hooks; light and refresh mode ranges include the CTRL 3 view |
 | 10 CSmplCharge vtables | `fill()` wrapped: asks Roland's fill for `ratio ×` the frames and resamples them (linear interpolation) |
-| Version text (`0x0C0F1142`, `0x0C0F115A`, `0x0C0F116C`) | Version screen shows `2.12` |
+| Version text (`0x0C0F1142`, `0x0C0F115A`, `0x0C0F116C`) | Version screen shows `2.20` |
 | PAD_INFO load / 100 ms auto-save | Load and save `VARISPD.BIN` and `CHROMA.BIN` alongside Roland's pad settings |
 | Pad copy / exchange worker literals | Varispeed moves with the sample when Roland's copy / exchange succeeds |
 | Play request literal, pad start / release pointers | Chromatic mode: keys (and empty pads) play the source pad at the key's pitch |
@@ -69,7 +69,7 @@ python3 src/tools/build.py official/sp404sx_up.bin -o out/sp404sx_up.bin
 ```
 
 The code is compiled for SH-4 without FPU (`-m4-nofpu -mb -Os`), and every generated instruction is checked
-against an SH-2A allow-list. Release v2.00 was built with GCC 13.3.0 (Ubuntu 13.3.0-6ubuntu2~24.04), v2.10, v2.11 and v2.12 with GCC 13.3.0 /
+against an SH-2A allow-list. Release v2.00 was built with GCC 13.3.0 (Ubuntu 13.3.0-6ubuntu2~24.04), v2.10, v2.11, v2.12 and v2.20 with GCC 13.3.0 /
 binutils 2.42 built from source on macOS (it rebuilds v2.00 byte-identical); another
 compiler version can produce a different (but equally valid) file, so the release is defined by the patch
 data and its SHA-256, not by rebuilding.

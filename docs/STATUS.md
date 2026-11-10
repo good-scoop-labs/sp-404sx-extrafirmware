@@ -1,11 +1,12 @@
 # Status
 
-What has been confirmed on hardware, and what hasn't yet. Release v2.12 = test build v2.11-issue1b plus the `2.12`
+What has been confirmed on hardware, and what hasn't yet. Release v2.20 = test build pan C1 (which includes the
+mute groups) plus the `2.20` version screen (two bytes). Release v2.12 = test build v2.11-issue1b plus the `2.12`
 version screen (one byte). Release v2.11 = the last fix test build plus the `2.11` version screen. Release v2.10 =
 test build v2.10c (byte-identical).
 Release v2.00 = internal build 13 plus the `2.00` version screen. The SP-404SX and SP-404A run the same firmware, so this applies to both.
 
-## Unreleased (mute groups, pan)
+## v2.20 (mute groups, pan)
 
 Confirmed on hardware:
 - Mute groups (test builds mute A, B, C): SHIFT + MARK menu, MARK blinking (MARK = button 36, LED 18), CTRL 1
@@ -17,6 +18,8 @@ Confirmed on hardware:
   `PAN.BIN` saved and following the sample; the reorganised saving / copy / exchange of varispeed, chromatic mode and
   mute groups; stereo pads panned (B) and mono pads panned as two-channel voices at unity (C1, chosen over the
   −3 dB variant C2).
+
+Not yet seen on hardware: the `2.20` version screen (the only change from the tested build).
 
 ## v2.12
 

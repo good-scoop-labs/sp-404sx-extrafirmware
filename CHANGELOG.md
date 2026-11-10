@@ -1,6 +1,9 @@
 # Changelog
 
-## Unreleased
+## v2.20
+
+New features. The version screen shows `2.20`. Output `sp404sx_up.bin` SHA-256
+`8cb970c8697bad3cd1c3292dac20393c515025184ff62e6017631360fb1c6964`.
 
 - **Mute groups:** each pad can be in mute group 1–10. A pad starting stops the other playing pads of its group,
   in any bank, from pads, MIDI or patterns (choke). **SHIFT + MARK** on the main screen opens a menu for the last
