@@ -48,13 +48,14 @@ Power off, then hold **MARK** while powering on: the display shows the version, 
 (Roland's firmware shows `1.07`). You can also select a pad, press **TIME/BPM** and turn **CTRL 3**: the
 display shows a BPM that changes as you turn it.
 
-The first time you save a speed, the firmware creates `/ROLAND/SP-404SX/SMPL/VARISPD.BIN` on the card;
-the first time you use chromatic mode, `/ROLAND/SP-404SX/SMPL/CHROMA.BIN`.
+The firmware keeps its settings in `/ROLAND/SP-404SX/SMPL/` on the card, creating each file the first time you
+use the feature: `VARISPD.BIN` (speeds), `CHROMA.BIN` (chromatic mode), `MUTEGRP.BIN` (mute groups) and
+`PAN.BIN` (pans).
 
 ## Going back to stock
 
 Install Roland's original `sp404sx_up.bin` (straight from Roland's zip) the same way. Your samples and
-patterns are not affected. `VARISPD.BIN` and `CHROMA.BIN` stay on the card; the stock firmware ignores
+patterns are not affected. `VARISPD.BIN`, `CHROMA.BIN`, `MUTEGRP.BIN` and `PAN.BIN` stay on the card; the stock firmware ignores
 them, and they are used again if you reinstall EXTRAfirmware.
 
 ## SP-404A

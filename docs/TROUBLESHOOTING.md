@@ -51,6 +51,21 @@ recorded over, or swapped away by copy / exchange. Play the pad you want and pre
 **Chromatic notes play at the wrong octave from MIDI.** The octave setting (CTRL 3 in the menu) applies to
 the pads only; over MIDI, note 60 (middle C) is always the sample's own pitch.
 
+**SHIFT + MARK does nothing.** The mute group menu opens from the main screen only, for the last pad played.
+Leave the TIME/BPM or START/END/LEVEL page first.
+
+**Pads in a mute group don't cut each other.** Both pads must show the same group (`M 1` … `M10`) in their
+SHIFT + MARK menu; `OFF` is no group.
+
+**SHIFT + START/END/LEVEL doesn't open the pan menu.** In FWD mode that combination stays Roland's BWD.
+Leave FWD mode first.
+
+**A mono pad's pan didn't change while it was playing.** A mono pad's pan applies from its next start. Stereo
+pads follow the pan straight away.
+
+**Mute groups or pans are not restored after power-off.** As with speeds: wait a second after the last change
+before powering off, and make sure the card isn't write-protected or full.
+
 **Dropouts with several fast pads.** Very high speeds read samples faster. Please open an issue with what
 was playing.
 

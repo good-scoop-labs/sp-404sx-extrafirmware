@@ -33,6 +33,7 @@
     border-radius: 999px; font-size: .85rem; color: var(--muted); }
   section { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 18px; margin-top: 18px; }
   h2 { margin: 0 0 6px; font-size: 1.1rem; }
+  h3 { margin: 14px 0 4px; font-size: 1rem; }
   h2 .n { display: inline-flex; align-items: center; justify-content: center; width: 1.6em; height: 1.6em; margin-right: 8px;
     border-radius: 50%; background: var(--accent); color: var(--accent-ink); font-size: .85rem; }
   p { margin: 6px 0; }
@@ -99,14 +100,41 @@
 
   <section>
     <h2>What it adds</h2>
+
+    <h3>Varispeed</h3>
     <ul>
-      <li><strong>CTRL&nbsp;3 on the TIME/BPM page</strong> sets each pad&rsquo;s speed: fully left OFF, then &minus;12 to +7 semitones (centre = normal), fully right <strong>PTN</strong> to follow the pattern tempo (0.25&times; to 4&times;).</li>
+      <li><strong>CTRL&nbsp;3 on the TIME/BPM page</strong> sets each pad&rsquo;s speed, tape style (pitch and tempo together): fully left OFF, then &minus;12 to +7 semitones (centre = normal), fully right <strong>PTN</strong> to follow the pattern tempo live (0.25&times; to 4&times;).</li>
       <li>The display shows the BPM you hear. CTRL&nbsp;1 and CTRL&nbsp;2 also show their value &times; the pad&rsquo;s speed.</li>
       <li>Works together with Time Modify. Moving CTRL&nbsp;2 resets varispeed, the same way it resets Time Modify.</li>
-      <li>Speeds are saved on the card (<code>VARISPD.BIN</code>) and follow the sample when you copy or exchange pads.</li>
-      <li><strong>Chromatic mode:</strong> play a pad, press SHIFT&nbsp;+&nbsp;TIME/BPM, and its bank becomes a keyboard for it (pad&nbsp;1 = its own pitch, +1 semitone per pad). CTRL&nbsp;1 sets the bank&rsquo;s MIDI channel (middle&nbsp;C = its own pitch), CTRL&nbsp;3 the octave. Several banks at once; works while resampling, so you can record melodies.</li>
-      <li><strong>Mute groups:</strong> play a pad, press SHIFT&nbsp;+&nbsp;MARK, and CTRL&nbsp;1 puts it in mute group 1&ndash;10. A pad starting stops the other playing pads of its group, in any bank (choke). Saved on the card (<code>MUTEGRP.BIN</code>).</li>
-      <li><strong>Pan:</strong> play a pad, press SHIFT&nbsp;+&nbsp;START/END/LEVEL, and CTRL&nbsp;3 pans it from L50 through C to R50, for stereo and mono pads. Pads at C play as stock. Saved on the card (<code>PAN.BIN</code>).</li>
+    </ul>
+
+    <h3>Chromatic mode</h3>
+    <ul>
+      <li>Play a pad and press <strong>SHIFT&nbsp;+&nbsp;TIME/BPM</strong>: its bank becomes a keyboard for it (pad&nbsp;1 = its own pitch, +1 semitone per pad, empty pads too). TIME/BPM blinks while the menu is open; the main screen shows <code>C.ON</code> on a chromatic bank.</li>
+      <li>CTRL&nbsp;1 sets the bank&rsquo;s MIDI channel (free channels only; middle&nbsp;C = its own pitch), CTRL&nbsp;3 the pads&rsquo; octave (&minus;2 to +2). One note at a time per bank; several banks at once, each with its own sample and channel.</li>
+      <li>HOLD latches every key, MARK keeps the note&rsquo;s pitch, varispeed moves the whole keyboard.</li>
+      <li>Works while resampling, so you can record melodies: at <code>RDY</code> / <code>REC</code> the pads and MIDI notes play, and the first note starts the recording.</li>
+      <li>Turn it off with CTRL&nbsp;1 fully left (<code>OFF</code>), or hold SHIFT&nbsp;+&nbsp;TIME/BPM and press CANCEL.</li>
+    </ul>
+
+    <h3>Mute groups</h3>
+    <ul>
+      <li>Play a pad and press <strong>SHIFT&nbsp;+&nbsp;MARK</strong> on the main screen (MARK blinks): CTRL&nbsp;1 puts it in mute group <code>M&nbsp;1</code>&ndash;<code>M10</code> or <code>OFF</code>. MARK closes the menu.</li>
+      <li>A pad starting stops the other playing pads of its group (choke, e.g. open and closed hi-hat), in any bank, whether started from pads, MIDI or patterns.</li>
+    </ul>
+
+    <h3>Pan</h3>
+    <ul>
+      <li>Play a pad and press <strong>SHIFT&nbsp;+&nbsp;START/END/LEVEL</strong> on the main screen, the TIME/BPM page or the chromatic menu (START/END/LEVEL blinks): CTRL&nbsp;3 pans it from <code>L50</code> through <code>C</code> to <code>R50</code>. In FWD mode the button combination stays Roland&rsquo;s BWD.</li>
+      <li>Balance law: the far side goes down, nothing gets louder, so panning never clips.</li>
+      <li>Stereo and mono pads, from pads, MIDI, patterns and resampling, together with varispeed, Time Modify and chromatic mode. A mono pad&rsquo;s new pan applies from its next start.</li>
+    </ul>
+
+    <h3>Saving and stock behaviour</h3>
+    <ul>
+      <li>Speeds, chromatic banks, mute groups and pans are saved on the card (<code>VARISPD.BIN</code>, <code>CHROMA.BIN</code>, <code>MUTEGRP.BIN</code>, <code>PAN.BIN</code>) and come back at power-on.</li>
+      <li>Speeds, mute groups and pans follow the sample: copy and exchange take them along; deleting, recording over or importing onto a pad resets them. A chromatic bank turns off if its source sample is deleted, recorded over or moved away.</li>
+      <li>Pads at normal speed / OFF, with no mute group and at pan C play bit-for-bit as with Roland&rsquo;s firmware.</li>
       <li>Roland&rsquo;s factory hardware-test mode is removed to make room. Nothing else changes.</li>
     </ul>
   </section>
