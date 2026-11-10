@@ -100,6 +100,21 @@ struct mute { u32 magic; unsigned char g[120], open, pad, eat; char txt[4]; vola
 struct mute mute_st SECT(".mutedata");
 static void mute_choke(int pad);
 
+/* ------------------------------------------------------------------ pan (state) */
+#ifndef PAN
+#define PAN(n) __attribute__((noinline, section(".text.pan" #n)))      /* reclaimed factory test page methods (link.ld) */
+#endif
+/* "PAN1" and per pad its pan, -50 (L50) .. 0 (centre) .. +50 (R50): saved verbatim as the start of PAN.BIN, the same
+   shape as mute_st's start; unsaved-change timer. */
+struct pan { u32 magic; s8 v[120]; volatile int dirty; };
+struct pan pan_tab SECT(".pandata");
+#define MODE_PAN 10               /* TIME/BPM page: pan menu */
+#define BTN_SEL  39               /* START/END/LEVEL button */
+#define LED_BPM  21               /* TIME/BPM LED (Roland's button -> LED table 0x0C138B74: button 40) */
+#define LED_SEL  22               /* START/END/LEVEL LED (button 39) */
+static void pan_open(struct page *p);
+static void pan_show(void);
+
 /* ------------------------------------------------------------------ speed + UI */
 #ifndef R_TEMPO
 #define R_TEMPO  ((int  (*)(void))0x0C0BAF24)   /* pattern tempo x100 (102.00 BPM = 10200); what stock PTN uses */
@@ -364,29 +379,32 @@ CHR(knob) static void chr_knob(int id, int v) {
     chr_st.mk = (unsigned char)id;
     if (*(u32 *)c != old) chr_st.dirty = 1;
 }
+static char *show_num(int c, int n);
 CHR(show) static void chr_show(void) {
     const struct cbank *c = &chr_tab.b[chr_st.mb];
-    char *t = chr_st.txt;
-    const char *s = t;
+    const char *s;
+    char *t;
     int n;
     if (chr_st.mk == 1) s = chr_mon_s;
     else if (chr_st.mk == 2) {                      /* o-2 .. o 2 */
         n = (c->mode & 7) - 2;
-        t[0] = 'o'; t[1] = n < 0 ? '-' : ' '; t[2] = (char)('0' + (n < 0 ? -n : n));
+        s = t = show_num('o', n < 0 ? -n : n);
+        if (n < 0) t[1] = '-';
     } else if (!c->src) s = STR_OFF;
-    else {                                          /* C 1 .. C16 */
-        n = c->ch + 1;
-        t[0] = 'C'; t[1] = n >= 10 ? '1' : ' '; t[2] = (char)('0' + (n >= 10 ? n - 10 : n));
-    }
-    t[3] = 0;
+    else s = show_num('C', c->ch + 1);              /* C 1 .. C16 */
     R_SHOWS(s, 1);
 }
 /* Display hook of the TIME/BPM page: open the menu if SHIFT + TIME/BPM asked for it, then draw it. A mode 9 left
    over from an earlier visit (menu closed) falls back to the CTRL 1 view. */
 CHR(menu) static int chr_menu(struct page *p) {
-    if (chr_st.want) chr_open(p);
+    if (chr_st.want) { if (chr_st.want == 2) pan_open(p); else chr_open(p); }
+    if (p->mode == MODE_PAN) {                      /* the pan menu; a mode 10 left over: START/END/LEVEL view */
+        if (chr_st.menu != 2) { p->mode = 1; return 0; }
+        pan_show();
+        return 1;
+    }
     if (p->mode != MODE_CHR) return 0;
-    if (!chr_st.menu) { p->mode = 7; return 0; }
+    if (chr_st.menu != 1) { p->mode = 7; return 0; }
     chr_show();
     return 1;
 }
@@ -425,11 +443,12 @@ CHR(padkey) int chr_holdget(int id, int pad, getfn orig) {
     if (b >= 0) pad = chr_tab.b[b].src - 1;
     return orig(id, pad);
 }
-/* Play page event hook (after the mute group menu's, mute_page_event): SHIFT + TIME/BPM asks the TIME/BPM page that
-   Roland is about to open for the menu. */
+/* Play page event hook (after the mute group menu's, mute_page_event): SHIFT + TIME/BPM / SHIFT + START/END/LEVEL ask
+   the TIME/BPM page that Roland is about to open for the chromatic (1) / pan (2) menu; any other press: neither. */
 typedef int (*evfn)(void *page, struct event *e);
 CHR(pageevent) int chr_page_event(void *page, struct event *e, evfn orig) {
-    if (e->type == 0 && e->val) chr_st.want = e->id == BTN_BPM && R_HELD(BTN_SHIFT) && !FWDMODE;
+    if (e->type == 0 && e->val)
+        chr_st.want = !R_HELD(BTN_SHIFT) || FWDMODE ? 0 : e->id == BTN_BPM ? 1 : e->id == BTN_SEL ? 2 : 0;
     return orig(page, e);
 }
 /* Play page enter and refresh hooks (UI task): C.ON when the bank shown is chromatic, drawn on the first refresh
@@ -584,48 +603,45 @@ CHR(ratio) static u32 chr_ratio(int pad, u32 r) {
 #ifndef R_LED
 #define R_LED ((void (*)(int led, int v))0x0C0AD8F4)   /* LED: 0 off, 1 on, 2 blink */
 #endif
-/* The menu's display and LED: the edited pad's group, MARK blinking. */
-MUTE(show) static void mute_show(void) {
+/* Display text: letter c, then n (1..59) in two places ("M 1", "M10", "L50"), in mute_st.txt (the mute menu and the
+   pan menu, on different pages, are never shown at once). */
+MUTE(num) static char *show_num(int c, int n) {
     char *t = mute_st.txt;
+    int d = 0;
+    while (n >= 10) { n -= 10; d++; }
+    t[0] = (char)c; t[1] = d ? (char)('0' + d) : ' '; t[2] = (char)('0' + n); t[3] = 0;
+    return t;
+}
+/* The menu's display and LED: the edited pad's group (OFF, M 1 .. M10), MARK blinking. */
+MUTE(show) static void mute_show(void) {
     int g = mute_st.g[mute_st.pad];
-    const char *s = STR_OFF;
-    if (g) {                                        /* M 1 .. M10 */
-        t[0] = 'M'; t[1] = g >= 10 ? '1' : ' '; t[2] = (char)('0' + (g >= 10 ? g - 10 : g)); t[3] = 0;
-        s = t;
-    }
-    R_SHOWS(s, 1);
+    R_SHOWS(g ? show_num('M', g) : STR_OFF, 1);
     R_LED(LED_MARK, 2);
 }
 MUTE(close) static void mute_close(void) {
     mute_st.open = 0;
     R_LED(LED_MARK, 0);
 }
-/* An event while the menu is open: 1 = taken. Knobs belong to the menu (CTRL 1: OFF, then groups 1..10). MARK
-   closes it (its release taken too); the edited pad plays as usual; any other pad or button closes it first. */
-MUTE(menu) static int mute_menu_ev(struct event *e) {
-    int id = e->id;
-    if (e->type != 0) {
-        if (e->type == 1 && id == 0) {
-            unsigned char *gp = &mute_st.g[mute_st.pad], g = (unsigned char)(((e->val < 0 ? 0 : e->val) * 11) >> 7);
-            if (*gp != g) { *gp = g; mute_st.dirty = 1; }
-            mute_show();
-        }
-        return 1;
-    }
-    if (!e->val || id == BTN_SHIFT) return 0;       /* releases and SHIFT: Roland's */
-    if (id == BTN_MARK) { mute_close(); mute_st.eat = 1; return 1; }
-    if (id >= 1 && id <= 12 && R_GET(P_BANK, -1) * 12 + id - 1 == mute_st.pad) return 0;   /* the edited pad */
-    mute_close();
-    return 0;
-}
 /* Play page event hook (pev_stub), before chromatic mode's and Roland's. SHIFT + MARK opens the menu for the
    current pad; the MARK press that opens or closes it and its release are taken (Roland would start or end setting
-   the pad's start / end points with them). */
+   the pad's start / end points with them). In the menu: knobs are its own (CTRL 1: OFF, then groups 1..10); MARK
+   closes it; the edited pad plays as usual; any other pad or button closes it first; releases and SHIFT: Roland's. */
 MUTE(ev) int mute_page_event(void *page, struct event *e, evfn orig) {
-    int pad;
-    if (e->type == 0 && e->id == BTN_MARK && !e->val && mute_st.eat) { mute_st.eat = 0; return 0; }
+    int id = e->id, pad;
+    if (e->type == 0 && id == BTN_MARK && !e->val && mute_st.eat) { mute_st.eat = 0; return 0; }
     if (mute_st.open) {
-        if (mute_menu_ev(e)) return 0;
+        if (e->type != 0) {
+            if (e->type == 1 && id == 0) {
+                unsigned char *gp = &mute_st.g[mute_st.pad], g = (unsigned char)(((e->val < 0 ? 0 : e->val) * 11) >> 7);
+                if (*gp != g) { *gp = g; mute_st.dirty = 1; }
+                mute_show();
+            }
+            return 0;
+        }
+        if (e->val && id != BTN_SHIFT) {
+            if (id == BTN_MARK) { mute_close(); mute_st.eat = 1; return 0; }
+            if (!(id >= 1 && id <= 12 && R_GET(P_BANK, -1) * 12 + id - 1 == mute_st.pad)) mute_close();
+        }
     } else if (e->type == 0 && e->id == BTN_MARK && e->val) {
         mute_st.eat = 0;                            /* a new press: a release still owed went to another page */
         if (R_HELD(BTN_SHIFT) && (pad = cur_pad()) >= 0) {
@@ -659,6 +675,71 @@ CAVE int vari_ev(struct page *p, struct event *e) {
     if (p->mode == MODE_CHR) return e->id == BTN_CANCEL ? chr_cancel(e) : chr_menu_ev(e);
     if (chr_padkey(e)) return 1;
     return vari_event(p, e);
+}
+
+/* ------------------------------------------------------------------ pan: menu */
+/* SHIFT + START/END/LEVEL (from the main screen, or anywhere on the TIME/BPM page, the chromatic menu included; not in
+   FWD mode, where it is Roland's BWD) opens a pan menu for the current pad (the last pad played): mode 10 of the
+   TIME/BPM page. CTRL 3 sets the pad's pan: fully left L50, centre detent C (knob 62..65, as varispeed's), fully
+   right R50; the display shows L50 .. L 1, C, R 1 .. R50, and only changes when CTRL 3 is turned. CTRL 1 / 2 do
+   nothing. START/END/LEVEL blinks, TIME/BPM is off. START/END/LEVEL closes it for the main screen; the pad it edits,
+   or a key of a chromatic bank, plays and keeps it; another pad closes it and Roland leaves the page for that pad;
+   SHIFT + TIME/BPM switches to the chromatic menu; entering the play page closes it (chr_page_enter). */
+/* Knob 0..127 -> pan -50..+50: 62 positions each side of the detent; (n * 50 + 61) / 62 as a multiply and shift
+   (exact for n = 1..62), so both ends are 50 and every value is reached. */
+PAN(pos) static int pan_pos(int v) {
+    int n = v <= 61 ? 62 - (v < 0 ? 0 : v) : v >= 66 ? v - 65 : 0;
+    if (!n) return 0;
+    n = ((n * 50 + 61) * 1057) >> 16;
+    return v <= 61 ? -n : n;
+}
+PAN(show) static void pan_show(void) {
+    int v = pan_tab.v[chr_st.mpad];
+    char *t = v < 0 ? show_num('L', -v) : show_num('R', v);   /* L50 .. L 1, R 1 .. R50 */
+    if (!v) { t[0] = 'C'; t[1] = 0; }
+    R_SHOWS(t, 1);
+}
+PAN(open) static void pan_open(struct page *p) {
+    int pad = R_GET(P_CURPAD, -1);
+    chr_st.want = 0;
+    if (pad < 0 || pad >= 120) return;
+    chr_st.mpad = (unsigned char)pad;
+    chr_st.menu = 2;
+    p->mode = MODE_PAN;
+}
+/* TIME/BPM page event hook (ev_stub): SHIFT + START/END/LEVEL opens the pan menu (in it too: it stays); in the pan
+   menu everything but SHIFT + TIME/BPM is the menu's (1 = taken, 0 = Roland's); everything else to vari_ev. */
+PAN(ev) int pan_event(struct page *p, struct event *e) {
+    int id = e->id, pad;
+    if (e->type == 0 && e->val && R_HELD(BTN_SHIFT) && !FWDMODE) {
+        if (id == BTN_SEL) { pan_open(p); return 1; }
+        if (id == BTN_BPM) return vari_ev(p, e);
+    }
+    if (p->mode != MODE_PAN) return vari_ev(p, e);
+    if (e->type != 0) {
+        if (e->type == 1 && id == 2) {
+            s8 v = (s8)pan_pos(e->val), *pp = &pan_tab.v[chr_st.mpad];
+            if (*pp != v) { *pp = v; pan_tab.dirty = 1; }
+            pan_show();
+        }
+        return 1;                                   /* CTRL 1 / 2: nothing */
+    }
+    if (!e->val || id == BTN_SHIFT) return 0;       /* releases and SHIFT: Roland's */
+    if (id == BTN_SEL) { chr_st.menu = 0; R_SETPAGE(0, 1); return 1; }
+    if (id >= 1 && id <= 12) {
+        pad = R_GET(P_BANK, -1) * 12 + id - 1;
+        if (pad == chr_st.mpad) return 0;           /* plays; Roland keeps the page for its own pad */
+        if (chr_keyof(pad) >= 0) return 1;          /* a chromatic key: plays, the page stays */
+    }
+    chr_st.menu = 0;                                /* another pad or button: the menu closes, then Roland's */
+    return 0;
+}
+/* TIME/BPM page enter and refresh (pan_enter_stub / pan_refresh_stub): Roland's, which draws the display (our menus)
+   and then the TIME/BPM / START/END/LEVEL LEDs from the mode; in the pan menu START/END/LEVEL blinks instead. */
+PAN(led) int pan_led(struct page *p, pgfn orig) {
+    int r = orig(p);
+    if (p->mode == MODE_PAN && chr_st.menu == 2) { R_LED(LED_BPM, 0); R_LED(LED_SEL, 2); }
+    return r;
 }
 
 /* ------------------------------------------------------------------ audio */
@@ -795,6 +876,53 @@ int vari_fill(void *obj, s16 *L, s16 *R, int *flag, int *frames, fillfn orig) {
     return 1;
 }
 
+/* ------------------------------------------------------------------ pan: sound */
+/* Every voice's fill (fill_fwd / fill_rev, in place of vari_fill): vari_fill as before, then the pad's pan on the frames
+   it made: balance law. Panned left, the right channel goes down linearly to silence at L50 and the left one stays as
+   it is; panned right, the mirror. No boost anywhere. Centre: nothing touched (stock, bit for bit, as vari_fill
+   leaves it). The pad in the feeder is a chromatic key's source, so keys use the source's pan. Q15 gain
+   (50 - |pan|) * 655: 0.98 at L 1, 0 at L50.
+   A mono pad plays one channel; one panned when it starts is started as two (pan_channels, vstart_stub) and its right
+   channel is made here from the left one (Roland's mono copy fills only L): the near side at MONO_TRIM, the far side
+   at MONO_TRIM x the gain. A voice keeps its channel count while it plays (a pad panned from C while it plays is panned
+   from its next start). */
+#ifndef PADINFO
+#define PADINFO  ((const unsigned char *)0x0C179344)
+#endif
+#ifndef VOICES
+#define VOICES   ((const unsigned char *)0x0CCAE0C8)   /* Roland's voice objects, 24 B each: +8 player (+4 channels) */
+#endif
+#ifndef MONO_TRIM
+#define MONO_TRIM 32768           /* a panned mono pad's near side, Q15: 32768 = unity, 23170 = -3 dB */
+#endif
+/* Voice start (vstart_stub, Roland's 0x0C0963AC with r5 = the pad's channels): the channels to start it with. */
+PAN(vch) int pan_channels(int ch, int pad) {
+    return ch == 1 && (unsigned)pad < 120 && pan_tab.v[pad] ? 2 : ch;
+}
+PAN(fill) int pan_fill(void *obj, s16 *L, s16 *R, int *flag, int *frames, fillfn orig) {
+    int r = vari_fill(obj, L, R, flag, frames, orig), pad = OBJ_I(obj, O_PAD), vi = OBJ_I(obj, O_VOICE), v, n, g;
+    s16 *x;
+    if ((unsigned)pad >= 120) return r;
+    v = pan_tab.v[pad];
+    n = *frames;
+    g = (50 - (v < 0 ? -v : v)) * 655;
+    if (PADINFO[pad * 32 + 22] != 2) {                       /* mono: only a voice started as two channels */
+        if ((unsigned)vi >= MAXV || *(const int *)(*(const char *const *)(VOICES + 24 * vi + 8) + 4) != 2) return r;
+        if (MONO_TRIM < 32768) g = (g * MONO_TRIM) >> 15;
+        for (; n > 0; n--, L++, R++) {
+            int a = *L, b = (a * (short)g) >> 15;
+            if (MONO_TRIM < 32768) a = (a * (short)(MONO_TRIM & 0x7FFF)) >> 15;
+            if (!v) b = a;
+            *L = (s16)(v > 0 ? b : a);
+            *R = (s16)(v > 0 ? a : b);
+        }
+        return r;
+    }
+    if (!v) return r;                                        /* stereo at centre: untouched */
+    for (x = v < 0 ? R : L; n > 0; n--, x++) *x = (s16)((*x * (short)g) >> 15);
+    return r;
+}
+
 /* ------------------------------------------------------------------ persistence */
 #ifndef R_OPEN
 #define R_LOCK   ((void (*)(int))0x0C0EE838)
@@ -881,9 +1009,9 @@ PERSIST int vari_tick(int ret, int ms) {
 }
 
 /* Roland's pad copy (exch = 0) and exchange (1) workers (xcopy_stub / xexch_stub), run by its file task with the
-   pads in params 60 (source) and 61 (destination); 0 = done. The speed moves with the sample explicitly: the
-   fingerprints can't tell identical samples apart (a copy exchanged with its source, a copy over another copy).
-   The speeds are read before the job, as resync may run on the half-done PAD_INFO meanwhile. */
+   pads in params 60 (source) and 61 (destination); 0 = done. Speed, mute group and pan move with the sample
+   explicitly: the fingerprints can't tell identical samples apart (a copy exchanged with its source, a copy over
+   another copy). They are read before the job, as a tick may run on the half-done PAD_INFO meanwhile. */
 CHR(xset) static void vari_xset(int pad, int pos) {
     vari_tab.e[pad].pos = (s8)pos;
     vari_tab.e[pad].fp = pad_fp(pad);
@@ -891,17 +1019,27 @@ CHR(xset) static void vari_xset(int pad, int pos) {
 }
 CHR(xop) int vari_xop(int (*fn)(void), int exch) {
     int p[2], i, r;
-    s8 s[2];
+    s8 s[2], grp[2], pan[2];
     for (i = 0; i < 2; i++) {
         p[i] = R_GET(60 + i, -1);
         if ((unsigned)p[i] >= 120) return fn();
         s[i] = vari_tab.e[p[i]].pos;
+        grp[i] = (s8)mute_st.g[p[i]];
+        pan[i] = pan_tab.v[p[i]];
     }
     r = fn();
-    if (!(r & 0xFF))
-        for (i = !exch; i < 2; i++) vari_xset(p[i], s[i ^ 1]);
+    if (!(r & 0xFF)) {
+        for (i = !exch; i < 2; i++) {
+            vari_xset(p[i], s[i ^ 1]);
+            mute_st.g[p[i]] = (unsigned char)grp[i ^ 1];
+            pan_tab.v[p[i]] = pan[i ^ 1];
+        }
+        mute_st.dirty = 1;
+        pan_tab.dirty = 1;
+    }
     return r;
 }
+#define mute_xop vari_xop                           /* its name in the mute group builds */
 
 /* ------------------------------------------------------------------ chromatic mode: saving */
 static const char chr_path[] SECT(".rodata.chr") = "/ROLAND/SP-404SX/SMPL/CHROMA.BIN";
@@ -917,14 +1055,13 @@ CHR(check) static int chr_check(void) {
     }
     return any;
 }
+/* Read (write = 0) or write one of our files under lock 14, like Roland's PAD_INFO: n bytes from / to a, then (if all
+   of those moved) m bytes from / to b. Returns the bytes moved, -1 if the file can't be opened or created. */
+static int file_io(const char *path, int write, void *a, int n, void *b, int m);
 /* Read CHROMA.BIN after PAD_INFO was (re)loaded; a missing or invalid file starts with every bank off. */
 CHR(load) static void chr_load(void) {
     struct ctab *t = &chr_tab;
-    int n = 0, fd, b;
-    R_LOCK(14);
-    fd = R_OPEN(chr_path, 1);
-    if (fd >= 0) { n = R_READ(fd, t, sizeof *t); R_CLOSE(fd); }
-    R_UNLOCK(14);
+    int n = file_io(chr_path, 0, t, sizeof *t, 0, 0), b;
     if (n != (int)sizeof *t || t->magic != CHR_MAGIC) {
         u32 *w = (u32 *)t;
         for (b = 0; b < (int)(sizeof *t / 4); b++) w[b] = 0;
@@ -935,83 +1072,90 @@ CHR(load) static void chr_load(void) {
     chr_st.dirty = 0;
 }
 CHR(save) static void chr_save(void) {
-    R_LOCK(14);
-    int fd = R_CREATE(chr_path);
-    if (fd >= 0) { R_WRITE(fd, &chr_tab, sizeof chr_tab); R_CLOSE(fd); }
-    R_UNLOCK(14);
+    file_io(chr_path, 1, &chr_tab, sizeof chr_tab, 0, 0);
 }
 /* Every 100 ms (tick_stub): Roland's auto-save and VARISPD.BIN first, then CHROMA.BIN the same way: loaded with it,
    a bank whose source sample changed (deleted, replaced, recorded over) turns off, written 1 s after a change. */
+static int due(volatile int *d, int ms);
 CHR(tick) int chr_tick(int ret, int ms) {
     int load = vari_need_load;
     ret = vari_tick(ret, ms);
     if (load) { chr_load(); return ret; }
     if (chr_check()) chr_st.dirty = 1;
-    if (chr_st.dirty > 0) {
-        chr_st.dirty += ms;
-        if (chr_st.dirty > 1000 && R_CARDOK()) { chr_save(); chr_st.dirty = 0; }
-    }
+    if (due(&chr_st.dirty, ms)) chr_save();
     return ret;
 }
 
-/* ------------------------------------------------------------------ mute groups: saving */
-/* MUTEGRP.BIN: "MUT1", per pad its group, then per pad the fingerprint of the sample the group was set with (244 B).
-   Read after PAD_INFO was (re)loaded, written 1 s after a change, like VARISPD.BIN and CHROMA.BIN. A pad whose sample
-   changes (deleted, recorded over, imported) loses its group; copy and exchange take the group along. */
+/* ------------------------------------------------------------------ mute groups and pan: saving */
+/* MUTEGRP.BIN / PAN.BIN: a magic, per pad its value (mute group 0..10 / pan -50..+50), then per pad the fingerprint of
+   the sample the value was set with (244 B). Read after PAD_INFO was (re)loaded, written 1 s after a change, like
+   VARISPD.BIN and CHROMA.BIN. A pad whose sample changes (deleted, recorded over, imported) goes back to 0 (no group,
+   centre); copy and exchange take the value along. Both tables start like struct stab (mute_st, pan_tab). */
+struct stab { u32 magic; s8 v[120]; };
+#define TAB_HEAD   124             /* magic + values */
 #define MUTE_MAGIC 0x4D555431u     /* "MUT1" */
-#define MUTE_HEAD  124             /* magic + groups: the start of mute_st */
+#define MUTE_HEAD  TAB_HEAD
+#define PAN_MAGIC  0x50414E31u     /* "PAN1" */
+#define MUTE_T     ((struct stab *)&mute_st)
+#define PAN_T      ((struct stab *)&pan_tab)
 static const char mute_path[] __attribute__((section(".rodata.mute"))) = "/ROLAND/SP-404SX/SMPL/MUTEGRP.BIN";
-/* A missing or invalid file, or a pad whose sample isn't the one its group was set with: no group. */
-MUTE(load) static void mute_load(void) {
-    unsigned char fp[120];
-    int n = 0, fd, p;
+static const char pan_path[] __attribute__((section(".rodata.mute"))) = "/ROLAND/SP-404SX/SMPL/PAN.BIN";
+MUTE(file) static int file_io(const char *path, int write, void *a, int n, void *b, int m) {
+    int fd, k = -1;
     R_LOCK(14);
-    fd = R_OPEN(mute_path, 1);
-    if (fd >= 0) { n = R_READ(fd, &mute_st, MUTE_HEAD); if (n == MUTE_HEAD) n += R_READ(fd, fp, 120); R_CLOSE(fd); }
+    fd = write ? R_CREATE(path) : R_OPEN(path, 1);
+    if (fd >= 0) {
+        k = write ? R_WRITE(fd, a, n) : R_READ(fd, a, n);
+        if (m && (write || k == n)) k += write ? R_WRITE(fd, b, m) : R_READ(fd, b, m);
+        R_CLOSE(fd);
+    }
     R_UNLOCK(14);
-    for (p = 0; p < 120; p++)
-        if (n != MUTE_HEAD + 120 || mute_st.magic != MUTE_MAGIC || mute_st.g[p] > 10 || !fp[p] || fp[p] != pad_fp(p))
-            mute_st.g[p] = 0;
-    mute_st.magic = MUTE_MAGIC;
-    mute_st.dirty = 0;
+    return k;
 }
-MUTE(save) static void mute_save(void) {
+/* A missing or invalid file, a value outside lo..hi, or a pad whose sample isn't the one the value was set with: 0. */
+MUTE(load) static void tab_load(struct stab *t, const char *path, u32 magic, int lo, int hi) {
     unsigned char fp[120];
-    int p, fd;
+    int n = file_io(path, 0, t, TAB_HEAD, fp, 120), p, v;
+    for (p = 0; p < 120; p++) {
+        v = t->v[p];
+        if (n != TAB_HEAD + 120 || t->magic != magic || v < lo || v > hi || !fp[p] || fp[p] != pad_fp(p)) t->v[p] = 0;
+    }
+    t->magic = magic;
+}
+MUTE(save) static void tab_save(const struct stab *t, const char *path) {
+    unsigned char fp[120];
+    int p;
     for (p = 0; p < 120; p++) fp[p] = pad_fp(p);
-    R_LOCK(14);
-    fd = R_CREATE(mute_path);
-    if (fd >= 0) { R_WRITE(fd, &mute_st, MUTE_HEAD); R_WRITE(fd, fp, 120); R_CLOSE(fd); }
-    R_UNLOCK(14);
+    file_io(path, 1, (void *)t, TAB_HEAD, fp, 120);
 }
-/* Every 100 ms (tick_stub), around chromatic mode's and varispeed's. A pad whose sample changed since varispeed last
-   looked (its fingerprint, which varispeed's resync then updates) loses its group. MUTEGRP.BIN is read with the other
-   files and written 1 s after a change. */
+/* An unsaved change (*d > 0): count the ms since it; 1 = write the file now (1 s after the last change, with the card
+   ready). The timer restarts before the write, so a change made while it runs is written next time. */
+MUTE(due) static int due(volatile int *d, int ms) {
+    if (*d <= 0) return 0;
+    *d += ms;
+    if (*d <= 1000 || !R_CARDOK()) return 0;
+    *d = 0;
+    return 1;
+}
+/* Every 100 ms (tick_stub), around chromatic mode's and varispeed's: both tables. */
 MUTE(tick) int mute_tick(int ret, int ms) {
     int load = vari_need_load, p;
-    if (!load)
-        for (p = 0; p < 120; p++)
-            if (mute_st.g[p] && pad_fp(p) != vari_tab.e[p].fp) { mute_st.g[p] = 0; mute_st.dirty = 1; }
+    if (!load)                                      /* a pad whose sample changed since varispeed last looked (its */
+        for (p = 0; p < 120; p++)                   /* fingerprint, which varispeed's resync then updates): 0 */
+            if ((mute_st.g[p] || pan_tab.v[p]) && pad_fp(p) != vari_tab.e[p].fp) {
+                if (mute_st.g[p]) { mute_st.g[p] = 0; mute_st.dirty = 1; }
+                if (pan_tab.v[p]) { pan_tab.v[p] = 0; pan_tab.dirty = 1; }
+            }
     ret = chr_tick(ret, ms);
-    if (load) { mute_load(); return ret; }
-    if (mute_st.dirty > 0) {
-        mute_st.dirty += ms;
-        if (mute_st.dirty > 1000 && R_CARDOK()) { mute_save(); mute_st.dirty = 0; }
+    if (load) {
+        tab_load(MUTE_T, mute_path, MUTE_MAGIC, 0, 10);
+        tab_load(PAN_T, pan_path, PAN_MAGIC, -50, 50);
+        mute_st.dirty = 0;
+        pan_tab.dirty = 0;
+        return ret;
     }
+    if (due(&mute_st.dirty, ms)) tab_save(MUTE_T, mute_path);
+    if (due(&pan_tab.dirty, ms)) tab_save(PAN_T, pan_path);
     return ret;
 }
-/* Roland's pad copy / exchange (xcopy_stub / xexch_stub), around varispeed's: the groups are read before the job and
-   set after it, as for the speeds (fingerprints can't tell identical samples apart). */
-MUTE(xop) int mute_xop(int (*fn)(void), int exch) {
-    int a = R_GET(60, -1), b = R_GET(61, -1), ga, gb, r;
-    if ((unsigned)a >= 120 || (unsigned)b >= 120) return vari_xop(fn, exch);
-    ga = mute_st.g[a];
-    gb = mute_st.g[b];
-    r = vari_xop(fn, exch);
-    if (!(r & 0xFF)) {
-        mute_st.g[b] = (unsigned char)ga;
-        if (exch) mute_st.g[a] = (unsigned char)gb;
-        mute_st.dirty = 1;
-    }
-    return r;
-}
+

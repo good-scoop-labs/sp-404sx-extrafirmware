@@ -50,6 +50,21 @@ sample at its own pitch, each next pad one semitone higher. A menu opens (TIME/B
 - HOLD works on every key, MARK keeps the note's pitch, and varispeed still applies on top.
 - Settings are saved on the card (`/ROLAND/SP-404SX/SMPL/CHROMA.BIN`).
 
+### Mute groups
+
+Each pad can be in one of ten **mute groups**: when a pad of a group starts, the other playing pads of that
+group stop (a "choke", e.g. open and closed hi-hat), in any bank, from pads, MIDI or patterns. Play a pad, then
+press **SHIFT + MARK** on the main screen (MARK blinks): CTRL 1 sets its group, `OFF` or `M 1` … `M10`; MARK
+closes the menu. Saved on the card (`/ROLAND/SP-404SX/SMPL/MUTEGRP.BIN`), following the sample like the speeds.
+
+### Pan
+
+Each pad has its own **pan**. Play a pad, then press **SHIFT + START/END/LEVEL** (START/END/LEVEL blinks):
+CTRL 3 sets it from `L50` through `C` to `R50`. Panning turns the far side down (balance law, no boost), on
+stereo and mono pads, wherever the pad plays: pads, MIDI, patterns, resampling, together with varispeed and
+chromatic mode. Pads at `C` play bit-for-bit as stock. Saved on the card (`/ROLAND/SP-404SX/SMPL/PAN.BIN`),
+following the sample like the speeds.
+
 Full details: [docs/USER_GUIDE.md](docs/USER_GUIDE.md).
 
 ## How to install

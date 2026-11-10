@@ -7,6 +7,12 @@
   pad played (MARK blinks): CTRL 1 sets the group (`OFF`, `M 1` … `M10`); MARK closes it, the edited pad plays,
   any other pad or button closes it. Saved on the card (`MUTEGRP.BIN`), following the sample on copy / exchange;
   delete, recording over or import clears it.
+- **Pan:** each pad has its own pan. **SHIFT + START/END/LEVEL** (main screen, TIME/BPM page, chromatic menu; not in
+  FWD mode) opens a menu for the last pad played (START/END/LEVEL blinks): CTRL 3 from `L50` through `C` to `R50`.
+  Balance law: the far side goes down, nothing gets louder. Stereo and mono pads (a panned mono pad plays as a
+  two-channel voice), from pads, MIDI, patterns and resampling, with varispeed and chromatic mode. Pads at `C` play
+  as stock. Saved on the card (`PAN.BIN`), following the sample on copy / exchange; delete, recording over or import
+  resets it.
 
 ## v2.12
 
