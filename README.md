@@ -3,11 +3,11 @@
 **SP-404SX/A EXTRAfirmware** is custom system firmware for the **Roland SP-404SX and SP-404A**. The two are
 the same instrument in a different case and run the same firmware, so it works on both in exactly the same
 way. It adds tape-style **varispeed** to every pad (pitch and tempo change together, like speeding up or
-slowing down a tape or a turntable) and a **chromatic mode** that turns a bank into a keyboard for one of its
-samples, playable from the pads and over MIDI.
+slowing down a tape or a turntable), a **chromatic mode** that turns a bank into a keyboard for one of its
+samples, playable from the pads and over MIDI, per-pad **mute groups** (choke) and per-pad **pan**.
 
-> **Current release: v2.12** (the version screen shows `2.12`), based on Roland's system 1.07.
-> Output file: `sp404sx_up.bin`, SHA-256 `a717922dc42cadd133f5f23719e112817bd3239bc18460e5407f6a049a6aeeb1`.
+> **Current release: v2.20** (the version screen shows `2.20`), based on Roland's system 1.07.
+> Output file: `sp404sx_up.bin`, SHA-256 `8cb970c8697bad3cd1c3292dac20393c515025184ff62e6017631360fb1c6964`.
 
 ## What it adds
 

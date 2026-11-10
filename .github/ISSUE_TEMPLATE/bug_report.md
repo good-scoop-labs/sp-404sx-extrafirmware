@@ -5,7 +5,7 @@ labels: bug
 ---
 
 **Unit:** SP-404SX / SP-404A
-**Release:** (e.g. 2.12)
+**Release:** (e.g. 2.20)
 **Made with:** web patcher / patch.py
 
 **What I did:**

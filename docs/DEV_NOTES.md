@@ -800,3 +800,11 @@ Implementation (vari.c "chromatic mode"):
   Time Modify, reverse, loop; long streamed mono samples; chromatic keys of a panned mono source; pattern playback;
   resampling; many panned mono voices + effects (polyphony, dropouts).
 - Build C report: C1 (mono near side at unity) works well, no complaints; kept as the default (MONO_TRIM 32768).
+
+## Release v2.20 (mute groups, pan; SHA-256 8cb970c8697bad3cd1c3292dac20393c515025184ff62e6017631360fb1c6964)
+- Test build pan C1 (SHA-256 a54e86e8..., tested on hardware; includes the mute groups) plus the version screen:
+  ones digit `add #43` -> `add #41` at 0x0C0F1142, tens digit `add #49` -> `add #50` at 0x0C0F115A ("2.20"); the
+  unpacked image differs from C1 only at 0x0C0F1143 and 0x0C0F115B. Built with GCC 13.3.0 / binutils 2.42 built
+  from source on macOS. Patch data regenerated (RELEASE = '2.20': 345 runs, 9951 bytes).
+- Checks: host tests; patch.py output identical to the build; the web patcher's code run in JavaScriptCore: official
+  file accepted, result byte-identical with the release hash, patched file recognised, modified input refused.

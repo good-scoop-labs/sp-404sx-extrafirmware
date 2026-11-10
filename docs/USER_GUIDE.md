@@ -182,7 +182,7 @@ them with the samples, and **deleting, recording over or importing** onto a pad 
 - Roland's **factory hardware-test mode** (the technician test screens started from a test file on the card
   or a key combination at power-on) is removed to make room for the new code. Nothing a player uses
   depends on it. Installing Roland's original update brings it back.
-- The **power-on version display** (hold MARK) shows `2.12` instead of `1.07`.
+- The **power-on version display** (hold MARK) shows `2.20` instead of `1.07`.
 
 ## Limits and notes
 
