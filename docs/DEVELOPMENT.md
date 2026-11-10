@@ -15,7 +15,7 @@ SP-404SX's own updater copies it to flash. EXTRAfirmware adds code to that image
 | CPageSmplEdit (TIME/BPM page) | Event and display hooks; light and refresh mode ranges include the CTRL 3 view |
 | 10 CSmplCharge vtables | `fill()` wrapped: asks Roland's fill for `ratio ×` the frames and resamples them (linear interpolation) |
 | Version text (`0x0C0F1142`, `0x0C0F115A`, `0x0C0F116C`) | Version screen shows `2.20` |
-| PAD_INFO load / 100 ms auto-save | Load and save `VARISPD.BIN` and `CHROMA.BIN` alongside Roland's pad settings |
+| PAD_INFO load / 100 ms auto-save | Load and save `VARISPD.BIN` and `CHROMA.BIN` (and, through the tick below, `MUTEGRP.BIN` and `PAN.BIN`) alongside Roland's pad settings |
 | Pad copy / exchange worker literals | Varispeed moves with the sample when Roland's copy / exchange succeeds |
 | Play request literal, pad start / release pointers | Chromatic mode: keys (and empty pads) play the source pad at the key's pitch |
 | CPagePlay event / enter / refresh slots | Chromatic mode: SHIFT + TIME/BPM gesture, `C.ON` on the play page |
@@ -56,8 +56,10 @@ official/                     put Roland's sp404sx_up.bin here (gitignored)
 - Python 3.8+ interpreter, no packages needed except `capstone` for the research tools (`pip install capstone`).
 - Mark `src/tools` as a Sources Root (the scripts import `sp404fw` from there).
 - Put Roland's official `sp404sx_up.bin` in `official/` (gitignored).
-- The host tests need a C compiler (gcc/clang); the build needs the SH cross compiler, which is Linux-only:
-  use Linux, WSL on Windows, or the `Dockerfile` on macOS/Windows.
+- The host tests need a C compiler (gcc/clang); the build needs an SH cross compiler. The packaged one is
+  Linux-only: use Linux, WSL on Windows, or the `Dockerfile` on macOS/Windows. On macOS you can also build
+  GCC and binutils for `sh4-linux-gnu` from source and put their `bin` directory on `PATH` (recent releases
+  were built that way).
 
 ## Building
 
@@ -94,7 +96,9 @@ python3 patch.py official/sp404sx_up.bin -o /tmp/p/sp404sx_up.bin && cmp /tmp/p/
 
 The host tests compile `vari.c` for the PC with Roland's functions replaced by mocks:
 `test_resampler` (bit-exact against a reference), `test_stress` (randomized, sanitizers), `test_chroma` (chromatic mode), `test_persist`
-(`VARISPD.BIN` cases), `test_ui` (TIME/BPM page logic).
+(`VARISPD.BIN` cases), `test_ui` (TIME/BPM page logic), `test_stream` (card streaming at high speeds),
+`test_mute` (mute group menu, choke, `MUTEGRP.BIN`) and `test_pan` (pan menu, LEDs, `PAN.BIN`, stereo and mono
+pan sound).
 
 ## Releasing
 
@@ -104,7 +108,9 @@ The host tests compile `vari.c` for the PC with Roland's functions replaced by m
    `python3 src/tools/make_patch_data.py official/sp404sx_up.bin out/sp404sx_up.bin`.
 4. Run the three checks above (and `node src/tools/check_web_page.js official/sp404sx_up.bin` if Playwright
    is installed).
-5. Update `CHANGELOG.md`, the SHA-256 in `README.md` and `docs/INSTALL.md`, and `docs/STATUS.md`.
+5. Update `CHANGELOG.md`, the version and SHA-256 in `README.md` and `docs/INSTALL.md`, `docs/STATUS.md`, and
+   the version shown in `docs/USER_GUIDE.md`, `docs/TROUBLESHOOTING.md`, `docs/index.html`, the version-text
+   row above and `.github/ISSUE_TEMPLATE/bug_report.md` (`git grep` the previous version).
 6. Commit and tag (`git tag -a vX.YZ`).
 
 Never commit `sp404sx_up.bin` files (stock or built): they are Roland's code. `.gitignore` excludes them.

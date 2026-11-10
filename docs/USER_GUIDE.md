@@ -1,7 +1,16 @@
 # SP-404SX/A EXTRAfirmware user guide
 
-Everything here applies to the SP-404SX and SP-404A alike. It all happens on the **TIME/BPM** page (select a
-pad, press TIME/BPM); everything else works as with Roland's firmware.
+Everything here applies to the SP-404SX and SP-404A alike. EXTRAfirmware adds four things, each with its own
+controls; everything else works as with Roland's firmware:
+
+| Feature | How to open it | Control |
+|---|---|---|
+| [Varispeed](#varispeed-ctrl-3) | Select a pad, press **TIME/BPM** | CTRL 3 |
+| [Chromatic mode](#chromatic-mode) | Play a pad, press **SHIFT + TIME/BPM** | CTRL 1 (MIDI channel / off), CTRL 3 (octave) |
+| [Mute groups](#mute-groups) | Play a pad, press **SHIFT + MARK** on the main screen | CTRL 1 |
+| [Pan](#pan) | Play a pad, press **SHIFT + START/END/LEVEL** | CTRL 3 |
+
+Pads at their default settings (varispeed OFF or normal, no mute group, pan `C`) play bit-for-bit as stock.
 
 ## Varispeed (CTRL 3)
 
@@ -102,7 +111,7 @@ The chromatic banks and their settings are saved on the card in `/ROLAND/SP-404S
 back at power-on. If a bank's source sample is deleted, replaced or recorded over, that bank stops being
 chromatic.
 
-## Saving and copying
+## Saving and copying speeds
 
 - Speeds are saved on the card in `/ROLAND/SP-404SX/SMPL/VARISPD.BIN`, about a second after the last
   change, and restored at power-on.
